@@ -1,67 +1,69 @@
-// main.cpp — Milestone 1 demo for the Clarevoyance graphics engine.
+// main.cpp — stress-test demo for the Clarevoyance graphics engine.
 //
-// Exercises every feature of the state-driven renderer:
-//   * oriented sprites (flat quads yawed about world-up) with frame animation
-//   * a billboard sprite that always faces the camera
-//   * a projectile whose arc is computed on the GPU from per-instance motion
-//     params — re-launched via a Diff only when it lands (no per-frame state)
-//   * two cameras (perspective + orthographic) toggled with a key
+// Spawns a large grid of penguin billboard sprites (GRID_W × GRID_H) in a
+// single applyState call. After that, nothing touches the instance buffer —
+// animation runs entirely in the shader via uTime. FPS is shown in the title.
 //
-// High-level loop: build WorldState -> applyState -> { applyDiff?; render }.
+// Keys: C = toggle perspective/ortho  ESC = quit
 #include <SDL.h>
 #include <cmath>
+#include <string>
 
 #include "renderer.h"
 
 using namespace cv;
 
-// --- Sprite sheet config ---------------------------------------------------
-// penguin.png is a 4096x256 horizontal strip: 16 columns × 1 row of 256×256 cells.
-// Frame layout (from penguin.json):
-//   Walk:      cols 0-4  (5 frames)
-//   Chat:      cols 4-5  (2 frames)
-//   Surprised: col  6    (1 frame)
-//   Confused:  col  7    (1 frame)
-//   Angry:     col  8    (1 frame)
-//   Blink:     col  4, 9, 10, 11  (non-sequential — not used in this demo)
+// --- Sprite sheet -----------------------------------------------------------
+// penguin.png: 4096×256, 16 cols × 1 row of 256×256 cells.
+//   Walk(0-4)  Chat(4-5)  Surprised(6)  Confused(7)  Angry(8)
 static const char* SHEET_PATH = "art/penguin.png";
-static const int SHEET_COLS = 16;
-static const int SHEET_ROWS = 1;
-static const float ANIM_FPS = 10.0f; // 100ms per frame from JSON
+static const int   SHEET_COLS = 16;
+static const int   SHEET_ROWS = 1;
+static const float ANIM_FPS   = 10.0f;
+
+// --- Stress-test grid -------------------------------------------------------
+static const int   GRID_W     = 100;   // penguins wide
+static const int   GRID_H     = 100;   // penguins deep
+static const float GRID_STEP  = 1.2f;  // world units between penguins
 
 static const int WINDOW_W = 1280;
 static const int WINDOW_H = 720;
 
-// Entity ids.
-enum : EntityId { PROJECTILE = 1, FIRST_SPRITE = 10, BILLBOARD = 20 };
-
-// Projectile launch params (chosen so it arcs and lands back at start height).
-static const Vec3 PROJ_START = {-4.0f, 0.5f, 2.0f};
-static const Vec3 PROJ_VEL = {2.5f, 6.0f, 0.0f};
-static const Vec3 PROJ_ACCEL = {0.0f, -9.8f, 0.0f};
-
-static Instance makeProjectile(float launchTime) {
-    Instance i = makeBillboard(PROJ_START, {1.0f, 1.0f});
-    setMotion(i, PROJ_VEL, PROJ_ACCEL, launchTime);
-    setAnimation(i, 7, 1, ANIM_FPS, launchTime); // Confused penguin in flight
-    return i;
-}
+// Five animation flavours to cycle through so the grid looks varied.
+static const struct { int first; int count; } ANIMS[] = {
+    {0, 5},  // Walk
+    {4, 2},  // Chat
+    {6, 1},  // Surprised
+    {7, 1},  // Confused
+    {8, 1},  // Angry
+};
+static const int NANIM = 5;
 
 static std::vector<Camera> buildCameras(float angle) {
-    const float R = 9.0f, H = 4.0f;
-    Vec3 eye = {std::sin(angle) * R, H, std::cos(angle) * R};
-    Vec3 target = {0.0f, 1.5f, 0.0f};
+    // Pull back far enough to see the whole grid.
+    const float R  = GRID_W * GRID_STEP * 0.7f;
+    const float H  = R * 0.6f;
+    Vec3 center = {
+        (GRID_W - 1) * GRID_STEP * 0.5f,
+        0.0f,
+        (GRID_H - 1) * GRID_STEP * 0.5f
+    };
+    Vec3 eye = {
+        center.x + std::sin(angle) * R,
+        H,
+        center.z + std::cos(angle) * R
+    };
 
     Camera persp;
     persp.projection = Projection::Perspective;
-    persp.position = eye;
-    persp.target = target;
+    persp.position   = eye;
+    persp.target     = center;
 
     Camera ortho;
-    ortho.projection = Projection::Orthographic;
-    ortho.position = eye;
-    ortho.target = target;
-    ortho.orthoHalfHeight = 5.0f;
+    ortho.projection      = Projection::Orthographic;
+    ortho.position        = eye;
+    ortho.target          = center;
+    ortho.orthoHalfHeight = R * 0.5f;
 
     return {persp, ortho};
 }
@@ -77,74 +79,60 @@ int main(int, char**) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
     SDL_Window* window = SDL_CreateWindow(
-        "Clarevoyance — Engine Demo (C: toggle camera, ESC: quit)",
+        "Clarevoyance — stress test",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         WINDOW_W, WINDOW_H, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
-    if (!window) {
-        SDL_Log("Window creation failed: %s", SDL_GetError());
-        SDL_Quit();
-        return 1;
-    }
+    if (!window) { SDL_Quit(); return 1; }
 
     SDL_GLContext ctx = SDL_GL_CreateContext(window);
-    if (!ctx) {
-        SDL_Log("GL context creation failed: %s", SDL_GetError());
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
-    }
+    if (!ctx) { SDL_DestroyWindow(window); SDL_Quit(); return 1; }
     SDL_GL_SetSwapInterval(1);
     SDL_Log("OpenGL: %s", glGetString(GL_VERSION));
 
     Renderer renderer;
     if (!renderer.init(SHEET_PATH, SHEET_COLS, SHEET_ROWS)) {
-        SDL_Log("Renderer init failed (is %s present?)", SHEET_PATH);
-        SDL_GL_DeleteContext(ctx);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
+        SDL_Log("Renderer init failed — is %s present?", SHEET_PATH);
+        SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(window); SDL_Quit();
         return 1;
     }
     renderer.setViewport(WINDOW_W, WINDOW_H);
 
-    // --- Build the initial world ------------------------------------------
+    // --- Build the world once -----------------------------------------------
     WorldState state;
-    state.cameras = buildCameras(0.0f);
+    state.cameras     = buildCameras(0.0f);
     state.activeCamera = 0;
 
-    // A row of penguins, each with a different animation / emotion.
-    // All face the camera directly (rotation=0) so the animation is readable.
-    struct { int first; int count; } anims[] = {
-        {0, 5},  // Walk
-        {4, 2},  // Chat
-        {6, 1},  // Surprised
-        {8, 1},  // Angry
-    };
-    const int kSprites = 4;
-    for (int i = 0; i < kSprites; ++i) {
-        float x = -3.0f + i * 2.0f;
-        Instance s = makeSprite({x, 1.0f, 0.0f}, {2.0f, 2.0f}, 0.0f);
-        setAnimation(s, anims[i].first, anims[i].count, ANIM_FPS, 0.0f);
-        state.instances[FIRST_SPRITE + i] = s;
+    const int total = GRID_W * GRID_H;
+    SDL_Log("Spawning %d penguins…", total);
+
+    EntityId id = 1;
+    for (int row = 0; row < GRID_H; ++row) {
+        for (int col = 0; col < GRID_W; ++col, ++id) {
+            float x = col * GRID_STEP;
+            float z = row * GRID_STEP;
+            // Stagger animation start so they're not all in lock-step.
+            float animOffset = -(col + row * GRID_W) * (1.0f / ANIM_FPS);
+            int aIdx = (col + row) % NANIM;
+
+            Instance inst = makeBillboard({x, 0.5f, z}, {1.0f, 1.0f});
+            setAnimation(inst, ANIMS[aIdx].first, ANIMS[aIdx].count,
+                         ANIM_FPS, animOffset);
+            state.instances[id] = inst;
+        }
     }
 
-    // A billboard penguin floating above — always faces the camera as it orbits.
-    Instance bb = makeBillboard({0.0f, 3.5f, 0.0f}, {2.0f, 2.0f});
-    setAnimation(bb, 0, 5, ANIM_FPS, 0.0f); // Walk
-    state.instances[BILLBOARD] = bb;
+    renderer.applyState(state);  // one upload — never touched again
+    SDL_Log("Buffer uploaded. Rendering %d instances per frame.", total);
 
-    // The projectile.
-    state.instances[PROJECTILE] = makeProjectile(0.0f);
-
-    renderer.applyState(state);
-
-    // Time to return to launch height: -2*vy / ay.
-    const float flightTime = -2.0f * PROJ_VEL.y / PROJ_ACCEL.y;
-
-    bool running = true;
-    int activeCam = 0;
-    float projectileLaunch = 0.0f;
+    // --- Render loop --------------------------------------------------------
+    bool running   = true;
+    int  activeCam = 0;
     SDL_Event event;
     Uint64 startTicks = SDL_GetTicks64();
+
+    // FPS tracking
+    Uint64 fpsWindowStart = startTicks;
+    int    frameCount     = 0;
 
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -158,22 +146,31 @@ int main(int, char**) {
 
         float t = (float)(SDL_GetTicks64() - startTicks) / 1000.0f;
 
-        // Per-frame: move the cameras (cheap — just uniforms) and re-launch the
-        // projectile only when it lands (the one moment its trajectory changes).
+        // Only thing that changes each frame: the camera orbit (uniforms only).
         Diff diff;
-        diff.replaceCameras = true;
-        diff.cameras = buildCameras(t * 0.3f);
+        diff.replaceCameras  = true;
+        diff.cameras         = buildCameras(t * 0.1f);
         diff.setActiveCamera = true;
-        diff.activeCamera = activeCam;
-
-        if (t - projectileLaunch >= flightTime) {
-            projectileLaunch = t;
-            diff.upserts.push_back({PROJECTILE, makeProjectile(t)});
-        }
-
+        diff.activeCamera    = activeCam;
         renderer.applyDiff(diff);
+
         renderer.render(t);
         SDL_GL_SwapWindow(window);
+
+        // Update title with FPS once per second.
+        ++frameCount;
+        Uint64 now = SDL_GetTicks64();
+        float elapsed = (float)(now - fpsWindowStart) / 1000.0f;
+        if (elapsed >= 1.0f) {
+            float fps = frameCount / elapsed;
+            std::string title =
+                "Clarevoyance — " + std::to_string(total) + " penguins  |  " +
+                std::to_string((int)std::round(fps)) + " FPS" +
+                "  (C: toggle camera  ESC: quit)";
+            SDL_SetWindowTitle(window, title.c_str());
+            frameCount    = 0;
+            fpsWindowStart = now;
+        }
     }
 
     renderer.shutdown();
