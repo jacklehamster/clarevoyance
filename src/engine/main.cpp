@@ -169,6 +169,7 @@ int main(int, char**) {
                 std::to_string((int)std::round(fps)) + " FPS" +
                 "  (C: toggle camera  ESC: quit)";
             SDL_SetWindowTitle(window, title.c_str());
+            SDL_Log("FPS: %.1f  (%d penguins)", fps, total);
             frameCount    = 0;
             fpsWindowStart = now;
         }
