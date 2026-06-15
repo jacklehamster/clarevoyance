@@ -91,6 +91,10 @@ void main() {
 // ---------------------------------------------------------------------------
 
 bool Renderer::init(const char* spriteSheetPath, int sheetCols, int sheetRows) {
+    if (sheetCols <= 0 || sheetRows <= 0) {
+        SDL_Log("Renderer::init: invalid sheet grid cols=%d rows=%d", sheetCols, sheetRows);
+        return false;
+    }
     sheetCols_ = sheetCols;
     sheetRows_ = sheetRows;
 
@@ -98,7 +102,11 @@ bool Renderer::init(const char* spriteSheetPath, int sheetCols, int sheetRows) {
     if (!program_) return false;
 
     texture_ = loadTexture(spriteSheetPath);
-    if (!texture_.valid()) return false;
+    if (!texture_.valid()) {
+        glDeleteProgram(program_);
+        program_ = 0;
+        return false;
+    }
 
     // Unit quad: corner (x,y) + uv. v=0 at the top so sheets read top-down.
     const float quad[] = {
@@ -178,10 +186,8 @@ void Renderer::applyState(const WorldState& state) {
         slotToId_.push_back(id);
         instances_.push_back(inst);
     }
-    if (!state.cameras.empty()) {
-        cameras_ = state.cameras;
-        activeCamera_ = state.activeCamera;
-    }
+    cameras_ = state.cameras;
+    activeCamera_ = state.activeCamera;
     instancesDirty_ = true;
 }
 

@@ -139,7 +139,8 @@ int main(int, char**) {
             if (event.type == SDL_QUIT) running = false;
             if (event.type == SDL_KEYDOWN) {
                 if (event.key.keysym.sym == SDLK_ESCAPE) running = false;
-                if (event.key.keysym.sym == SDLK_c) activeCam = (activeCam + 1) % 2;
+                if (event.key.keysym.sym == SDLK_c && event.key.repeat == 0)
+                    activeCam = (activeCam + 1) % 2;
             }
         }
 

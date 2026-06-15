@@ -1,7 +1,12 @@
 CXX      := clang++
 CXXFLAGS := -std=c++17 -Wall -Wextra -O2 -DGL_SILENCE_DEPRECATION -Isrc/engine
 SDL2     := $(shell sdl2-config --cflags --libs)
+UNAME_S  := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
 GL_FLAGS := -framework OpenGL
+else
+GL_FLAGS := -lGL
+endif
 
 SRC  := $(wildcard src/engine/*.cpp)
 BIN  := build/clarevoyance

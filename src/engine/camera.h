@@ -5,6 +5,7 @@
 // exposes its right/up basis so the renderer can billboard sprites toward it.
 #pragma once
 
+#include <cmath>
 #include "mathx.h"
 
 namespace cv {
@@ -31,18 +32,28 @@ struct Camera {
     Mat4 view() const { return lookAt(position, target, up); }
 
     Mat4 projectionMatrix() const {
+        float safeAspect = (aspect > 0.0f) ? aspect : 1.0f;
+        float safeNear   = (nearPlane > 0.0f) ? nearPlane : 0.01f;
+        float safeFar    = (farPlane > safeNear) ? farPlane : (safeNear + 100.0f);
         if (projection == Projection::Orthographic) {
-            float hh = orthoHalfHeight;
-            float hw = hh * aspect;
-            return ortho(-hw, hw, -hh, hh, nearPlane, farPlane);
+            float hh = (orthoHalfHeight > 0.0f) ? orthoHalfHeight : 1.0f;
+            float hw = hh * safeAspect;
+            return ortho(-hw, hw, -hh, hh, safeNear, safeFar);
         }
-        return perspective(fovYRadians, aspect, nearPlane, farPlane);
+        return perspective(fovYRadians, safeAspect, safeNear, safeFar);
     }
 
     Mat4 viewProjection() const { return mul(projectionMatrix(), view()); }
 
     // Camera-space right/up in world coordinates, for billboarding.
-    Vec3 right() const { return normalize(cross(normalize(target - position), up)); }
+    // Falls back to the Z axis when forward is nearly parallel to up (looking straight down).
+    Vec3 right() const {
+        Vec3 fwd = normalize(target - position);
+        Vec3 upN = normalize(up);
+        if (std::fabs(dot(fwd, upN)) > 0.999f)
+            upN = {0.0f, 0.0f, 1.0f};
+        return normalize(cross(fwd, upN));
+    }
     Vec3 trueUp() const {
         Vec3 fwd = normalize(target - position);
         return normalize(cross(right(), fwd));

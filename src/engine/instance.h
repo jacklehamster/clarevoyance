@@ -12,6 +12,7 @@
 // Instance when its trajectory or animation actually changes.
 #pragma once
 
+#include <type_traits>
 #include "mathx.h"
 
 namespace cv {
@@ -29,6 +30,13 @@ struct Instance {
     // Animation: firstFrame, frameCount, framesPerSecond, animStart.
     Vec4 anim = {0, 1, 0, 0};
 };
+
+// Compile-time ABI guard: Instance is a binary contract with the GPU attribute
+// layout in renderer.cpp. These assertions catch accidental struct drift early.
+static_assert(std::is_standard_layout<Instance>::value, "Instance must be standard-layout");
+static_assert(sizeof(Vec2) == 8,  "Vec2 size changed — GPU attribute layout broken");
+static_assert(sizeof(Vec3) == 12, "Vec3 size changed — GPU attribute layout broken");
+static_assert(sizeof(Vec4) == 16, "Vec4 size changed — GPU attribute layout broken");
 
 // --- Convenience builders (keep call sites in the demo / game readable) ------
 

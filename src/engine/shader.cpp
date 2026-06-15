@@ -23,7 +23,11 @@ GLuint compileShader(GLenum type, const char* src) {
 GLuint buildProgram(const char* vertSrc, const char* fragSrc) {
     GLuint v = compileShader(GL_VERTEX_SHADER, vertSrc);
     GLuint f = compileShader(GL_FRAGMENT_SHADER, fragSrc);
-    if (!v || !f) return 0;
+    if (!v || !f) {
+        if (v) glDeleteShader(v);
+        if (f) glDeleteShader(f);
+        return 0;
+    }
 
     GLuint p = glCreateProgram();
     glAttachShader(p, v);
