@@ -40,12 +40,13 @@ static const struct { int first; int count; } ANIMS[] = {
 static const int NANIM = 5;
 
 static std::vector<Camera> buildCameras(float angle) {
-    // Pull back far enough to see the whole grid.
-    const float R  = GRID_W * GRID_STEP * 0.7f;
-    const float H  = R * 0.6f;
+    // Fixed view distance — always shows ~12 penguins across regardless of
+    // how large the grid is. The rest of the grid extends out of frame.
+    const float R  = 8.0f;
+    const float H  = 6.0f;
     Vec3 center = {
         (GRID_W - 1) * GRID_STEP * 0.5f,
-        0.0f,
+        0.5f,
         (GRID_H - 1) * GRID_STEP * 0.5f
     };
     Vec3 eye = {
@@ -63,7 +64,7 @@ static std::vector<Camera> buildCameras(float angle) {
     ortho.projection      = Projection::Orthographic;
     ortho.position        = eye;
     ortho.target          = center;
-    ortho.orthoHalfHeight = R * 0.5f;
+    ortho.orthoHalfHeight = 5.0f;
 
     return {persp, ortho};
 }
