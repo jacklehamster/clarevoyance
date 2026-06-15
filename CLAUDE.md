@@ -152,8 +152,10 @@ for Clare's father's death. His unchecked ambitions would fracture the kingdom.
   /textures     — environment textures and tiles
   /audio        — music and sound effects
 /docs
-  STORY.md      — full narrative, character arcs, boss designs, themes
-  CLAUDE.md     — this file
+  STORY.md          — full narrative, character arcs, boss designs, themes
+  ARCHITECTURE.md   — engine layer: renderer contract, Instance/WorldState/Diff/Camera API
+  GAME_LAYER.md     — game layer: combat, AI, clairvoyance system, event format, world structure
+  CLAUDE.md         — this file
 ```
 
 ---
@@ -183,6 +185,7 @@ make build-wasm
 - Clairvoyance shim rendering lives in `/engine` (it's a visual system), triggered by `/game`
 - No magic numbers — named constants for grid size, turn speed, shim opacity, etc.
 - All game simulation logic must be deterministic — document any RNG usage with its seed
+- **Doc sync rule:** any change to `Instance`, `WorldState`, `Diff`, or `Camera` must update `docs/ARCHITECTURE.md` first. `docs/GAME_LAYER.md` references those contracts and must not duplicate or contradict them. When the two docs conflict, `ARCHITECTURE.md` is authoritative.
 
 ---
 
