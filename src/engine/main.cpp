@@ -15,16 +15,22 @@
 
 using namespace cv;
 
-// --- Sprite sheet config (swap in your own PNG + grid here) ----------------
-static const char* SHEET_PATH = "assets/sprites/demo_sheet.png";
-static const int SHEET_COLS = 4;
+// --- Sprite sheet config ---------------------------------------------------
+// penguin.png is a 4096x256 horizontal strip: 16 columns × 1 row of 256×256 cells.
+// Frame layout (from penguin.json):
+//   Walk:      cols 0-4  (5 frames)
+//   Chat:      cols 4-5  (2 frames)
+//   Surprised: col  6    (1 frame)
+//   Confused:  col  7    (1 frame)
+//   Angry:     col  8    (1 frame)
+//   Blink:     col  4, 9, 10, 11  (non-sequential — not used in this demo)
+static const char* SHEET_PATH = "art/penguin.png";
+static const int SHEET_COLS = 16;
 static const int SHEET_ROWS = 1;
-static const float ANIM_FPS = 6.0f;
+static const float ANIM_FPS = 10.0f; // 100ms per frame from JSON
 
 static const int WINDOW_W = 1280;
 static const int WINDOW_H = 720;
-
-static const float PI = 3.14159265f;
 
 // Entity ids.
 enum : EntityId { PROJECTILE = 1, FIRST_SPRITE = 10, BILLBOARD = 20 };
@@ -37,7 +43,7 @@ static const Vec3 PROJ_ACCEL = {0.0f, -9.8f, 0.0f};
 static Instance makeProjectile(float launchTime) {
     Instance i = makeBillboard(PROJ_START, {1.0f, 1.0f});
     setMotion(i, PROJ_VEL, PROJ_ACCEL, launchTime);
-    setAnimation(i, 0, SHEET_COLS * SHEET_ROWS, ANIM_FPS, launchTime);
+    setAnimation(i, 7, 1, ANIM_FPS, launchTime); // Confused penguin in flight
     return i;
 }
 
@@ -105,19 +111,25 @@ int main(int, char**) {
     state.cameras = buildCameras(0.0f);
     state.activeCamera = 0;
 
-    // A row of oriented sprites, each yawed differently so the orbiting camera
-    // catches them face-on and edge-on.
+    // A row of penguins, each with a different animation / emotion.
+    // All face the camera directly (rotation=0) so the animation is readable.
+    struct { int first; int count; } anims[] = {
+        {0, 5},  // Walk
+        {4, 2},  // Chat
+        {6, 1},  // Surprised
+        {8, 1},  // Angry
+    };
     const int kSprites = 4;
     for (int i = 0; i < kSprites; ++i) {
         float x = -3.0f + i * 2.0f;
-        Instance s = makeSprite({x, 1.0f, 0.0f}, {2.0f, 2.0f}, i * (PI / 4.0f));
-        setAnimation(s, 0, SHEET_COLS * SHEET_ROWS, ANIM_FPS, 0.0f);
+        Instance s = makeSprite({x, 1.0f, 0.0f}, {2.0f, 2.0f}, 0.0f);
+        setAnimation(s, anims[i].first, anims[i].count, ANIM_FPS, 0.0f);
         state.instances[FIRST_SPRITE + i] = s;
     }
 
-    // A billboard sprite floating above, always facing the camera.
+    // A billboard penguin floating above — always faces the camera as it orbits.
     Instance bb = makeBillboard({0.0f, 3.5f, 0.0f}, {2.0f, 2.0f});
-    setAnimation(bb, 0, SHEET_COLS * SHEET_ROWS, ANIM_FPS, 0.0f);
+    setAnimation(bb, 0, 5, ANIM_FPS, 0.0f); // Walk
     state.instances[BILLBOARD] = bb;
 
     // The projectile.
