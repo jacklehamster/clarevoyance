@@ -22,9 +22,13 @@ static const int   SHEET_ROWS = 1;
 static const float ANIM_FPS   = 10.0f;
 
 // --- Stress-test grid -------------------------------------------------------
-static const int   GRID_W     = 100;   // penguins wide
-static const int   GRID_H     = 100;   // penguins deep
-static const float GRID_STEP  = 1.2f;  // world units between penguins
+// The grid always spans GRID_EXTENT × GRID_EXTENT world units so the camera
+// view stays constant. Increasing GRID_W/H packs more penguins into the same
+// area — density increases visibly as the count goes up.
+static const int   GRID_W      = 30;
+static const int   GRID_H      = 30;
+static const float GRID_EXTENT = 20.0f;
+static const float GRID_STEP   = GRID_EXTENT / GRID_W;
 
 static const int WINDOW_W = 1280;
 static const int WINDOW_H = 720;
@@ -40,16 +44,11 @@ static const struct { int first; int count; } ANIMS[] = {
 static const int NANIM = 5;
 
 static std::vector<Camera> buildCameras(float angle) {
-    // Fixed view distance — always shows ~12 penguins across regardless of
-    // how large the grid is. The rest of the grid extends out of frame.
-    const float R  = 8.0f;
-    const float H  = 6.0f;
-    Vec3 center = {
-        (GRID_W - 1) * GRID_STEP * 0.5f,
-        0.5f,
-        (GRID_H - 1) * GRID_STEP * 0.5f
-    };
-    Vec3 eye = {
+    // Camera always fits the full GRID_EXTENT × GRID_EXTENT area in view.
+    const float R  = GRID_EXTENT * 0.75f;
+    const float H  = GRID_EXTENT * 0.65f;
+    Vec3 center = {GRID_EXTENT * 0.5f, 0.0f, GRID_EXTENT * 0.5f};
+    Vec3 eye    = {
         center.x + std::sin(angle) * R,
         H,
         center.z + std::cos(angle) * R
@@ -64,7 +63,7 @@ static std::vector<Camera> buildCameras(float angle) {
     ortho.projection      = Projection::Orthographic;
     ortho.position        = eye;
     ortho.target          = center;
-    ortho.orthoHalfHeight = 5.0f;
+    ortho.orthoHalfHeight = GRID_EXTENT * 0.6f;
 
     return {persp, ortho};
 }
@@ -115,7 +114,8 @@ int main(int, char**) {
             float animOffset = -(col + row * GRID_W) * (1.0f / ANIM_FPS);
             int aIdx = (col + row) % NANIM;
 
-            Instance inst = makeBillboard({x, 0.5f, z}, {1.0f, 1.0f});
+            float s = GRID_STEP * 0.9f;
+            Instance inst = makeBillboard({x, s * 0.5f, z}, {s, s});
             setAnimation(inst, ANIMS[aIdx].first, ANIMS[aIdx].count,
                          ANIM_FPS, animOffset);
             state.instances[id] = inst;
