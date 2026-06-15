@@ -1,9 +1,9 @@
 CXX      := clang++
-CXXFLAGS := -std=c++17 -Wall -Wextra -O2 -DGL_SILENCE_DEPRECATION
+CXXFLAGS := -std=c++17 -Wall -Wextra -O2 -DGL_SILENCE_DEPRECATION -Isrc/engine
 SDL2     := $(shell sdl2-config --cflags --libs)
 GL_FLAGS := -framework OpenGL
 
-SRC  := src/engine/main.cpp
+SRC  := $(wildcard src/engine/*.cpp)
 BIN  := build/clarevoyance
 APP  := build/Clarevoyance.app
 EXE  := $(APP)/Contents/MacOS/clarevoyance
@@ -14,9 +14,9 @@ all: bundle
 
 build: $(BIN)
 
-$(BIN): $(SRC)
+$(BIN): $(SRC) $(wildcard src/engine/*.h)
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) $(SDL2) $(GL_FLAGS) $< -o $@
+	$(CXX) $(CXXFLAGS) $(SDL2) $(GL_FLAGS) $(SRC) -o $@
 
 bundle: $(BIN)
 	@mkdir -p $(APP)/Contents/MacOS

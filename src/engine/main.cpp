@@ -1,117 +1,79 @@
+// main.cpp — Milestone 1 demo for the Clarevoyance graphics engine.
+//
+// Exercises every feature of the state-driven renderer:
+//   * oriented sprites (flat quads yawed about world-up) with frame animation
+//   * a billboard sprite that always faces the camera
+//   * a projectile whose arc is computed on the GPU from per-instance motion
+//     params — re-launched via a Diff only when it lands (no per-frame state)
+//   * two cameras (perspective + orthographic) toggled with a key
+//
+// High-level loop: build WorldState -> applyState -> { applyDiff?; render }.
 #include <SDL.h>
-#include <OpenGL/gl3.h>
-#include <cstdio>
 #include <cmath>
+
+#include "renderer.h"
+
+using namespace cv;
+
+// --- Sprite sheet config (swap in your own PNG + grid here) ----------------
+static const char* SHEET_PATH = "assets/sprites/demo_sheet.png";
+static const int SHEET_COLS = 4;
+static const int SHEET_ROWS = 1;
+static const float ANIM_FPS = 6.0f;
 
 static const int WINDOW_W = 1280;
 static const int WINDOW_H = 720;
 
-// -----------------------------------------------------------------------
-// Shaders
-// -----------------------------------------------------------------------
+static const float PI = 3.14159265f;
 
-static const char* VERT_SRC = R"glsl(
-#version 330 core
+// Entity ids.
+enum : EntityId { PROJECTILE = 1, FIRST_SPRITE = 10, BILLBOARD = 20 };
 
-layout(location = 0) in vec2 aPos;   // -1..1 NDC quad
-layout(location = 1) in vec2 aUV;
+// Projectile launch params (chosen so it arcs and lands back at start height).
+static const Vec3 PROJ_START = {-4.0f, 0.5f, 2.0f};
+static const Vec3 PROJ_VEL = {2.5f, 6.0f, 0.0f};
+static const Vec3 PROJ_ACCEL = {0.0f, -9.8f, 0.0f};
 
-out vec2 vUV;
-
-void main() {
-    gl_Position = vec4(aPos, 0.0, 1.0);
-    vUV = aUV;
-}
-)glsl";
-
-// Cycles through a 4x1 sprite sheet using time, drawn as a tinted quad.
-static const char* FRAG_SRC = R"glsl(
-#version 330 core
-
-in  vec2 vUV;
-out vec4 fragColor;
-
-uniform float uTime;
-uniform int   uFrameCount; // total columns in the sprite sheet
-uniform int   uFrame;      // current frame index (set by CPU or GPU-computed)
-
-void main() {
-    // Map uv.x into the current frame's column
-    float col   = float(uFrame);
-    float total = float(uFrameCount);
-    float u     = (col + vUV.x) / total;
-
-    // Simple checkerboard pattern to stand in for a real sprite texture
-    float checker = mod(floor(u * 16.0) + floor(vUV.y * 16.0), 2.0);
-    vec3 baseColor = mix(vec3(0.15, 0.55, 0.85), vec3(0.9, 0.9, 0.9), checker);
-
-    // Tint shifts each frame so you can see animation is running
-    float hue = col / total;
-    vec3 tint = 0.5 + 0.5 * vec3(cos(hue * 6.28),
-                                   cos(hue * 6.28 + 2.09),
-                                   cos(hue * 6.28 + 4.19));
-    fragColor = vec4(baseColor * tint, 1.0);
-}
-)glsl";
-
-// -----------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------
-
-static GLuint compileShader(GLenum type, const char* src) {
-    GLuint s = glCreateShader(type);
-    glShaderSource(s, 1, &src, nullptr);
-    glCompileShader(s);
-    GLint ok;
-    glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        char log[512];
-        glGetShaderInfoLog(s, 512, nullptr, log);
-        SDL_Log("Shader compile error: %s", log);
-    }
-    return s;
+static Instance makeProjectile(float launchTime) {
+    Instance i = makeBillboard(PROJ_START, {1.0f, 1.0f});
+    setMotion(i, PROJ_VEL, PROJ_ACCEL, launchTime);
+    setAnimation(i, 0, SHEET_COLS * SHEET_ROWS, ANIM_FPS, launchTime);
+    return i;
 }
 
-static GLuint buildProgram(const char* vert, const char* frag) {
-    GLuint v = compileShader(GL_VERTEX_SHADER, vert);
-    GLuint f = compileShader(GL_FRAGMENT_SHADER, frag);
-    GLuint p = glCreateProgram();
-    glAttachShader(p, v);
-    glAttachShader(p, f);
-    glLinkProgram(p);
-    GLint ok;
-    glGetProgramiv(p, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        char log[512];
-        glGetProgramInfoLog(p, 512, nullptr, log);
-        SDL_Log("Program link error: %s", log);
-    }
-    glDeleteShader(v);
-    glDeleteShader(f);
-    return p;
+static std::vector<Camera> buildCameras(float angle) {
+    const float R = 9.0f, H = 4.0f;
+    Vec3 eye = {std::sin(angle) * R, H, std::cos(angle) * R};
+    Vec3 target = {0.0f, 1.5f, 0.0f};
+
+    Camera persp;
+    persp.projection = Projection::Perspective;
+    persp.position = eye;
+    persp.target = target;
+
+    Camera ortho;
+    ortho.projection = Projection::Orthographic;
+    ortho.position = eye;
+    ortho.target = target;
+    ortho.orthoHalfHeight = 5.0f;
+
+    return {persp, ortho};
 }
 
-// -----------------------------------------------------------------------
-// Entry point
-// -----------------------------------------------------------------------
-
-int main(int /*argc*/, char* /*argv*/[]) {
+int main(int, char**) {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;
     }
 
-    // Request OpenGL 3.3 Core
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
     SDL_Window* window = SDL_CreateWindow(
-        "Clarevoyance — Hello World",
+        "Clarevoyance — Engine Demo (C: toggle camera, ESC: quit)",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        WINDOW_W, WINDOW_H,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN
-    );
+        WINDOW_W, WINDOW_H, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
     if (!window) {
         SDL_Log("Window creation failed: %s", SDL_GetError());
         SDL_Quit();
@@ -125,74 +87,83 @@ int main(int /*argc*/, char* /*argv*/[]) {
         SDL_Quit();
         return 1;
     }
-    SDL_GL_SetSwapInterval(1); // vsync
-
+    SDL_GL_SetSwapInterval(1);
     SDL_Log("OpenGL: %s", glGetString(GL_VERSION));
-    SDL_Log("Renderer: %s", glGetString(GL_RENDERER));
 
-    // Full-screen quad (two triangles, NDC)
-    //   position (xy)   uv
-    float verts[] = {
-        -0.5f,  0.5f,   0.0f, 1.0f,
-        -0.5f, -0.5f,   0.0f, 0.0f,
-         0.5f, -0.5f,   1.0f, 0.0f,
-         0.5f,  0.5f,   1.0f, 1.0f,
-    };
-    unsigned int indices[] = { 0, 1, 2,  0, 2, 3 };
+    Renderer renderer;
+    if (!renderer.init(SHEET_PATH, SHEET_COLS, SHEET_ROWS)) {
+        SDL_Log("Renderer init failed (is %s present?)", SHEET_PATH);
+        SDL_GL_DeleteContext(ctx);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+    renderer.setViewport(WINDOW_W, WINDOW_H);
 
-    GLuint vao, vbo, ebo;
-    glGenVertexArrays(1, &vao);
-    glGenBuffers(1, &vbo);
-    glGenBuffers(1, &ebo);
+    // --- Build the initial world ------------------------------------------
+    WorldState state;
+    state.cameras = buildCameras(0.0f);
+    state.activeCamera = 0;
 
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+    // A row of oriented sprites, each yawed differently so the orbiting camera
+    // catches them face-on and edge-on.
+    const int kSprites = 4;
+    for (int i = 0; i < kSprites; ++i) {
+        float x = -3.0f + i * 2.0f;
+        Instance s = makeSprite({x, 1.0f, 0.0f}, {2.0f, 2.0f}, i * (PI / 4.0f));
+        setAnimation(s, 0, SHEET_COLS * SHEET_ROWS, ANIM_FPS, 0.0f);
+        state.instances[FIRST_SPRITE + i] = s;
+    }
 
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-    glEnableVertexAttribArray(1);
+    // A billboard sprite floating above, always facing the camera.
+    Instance bb = makeBillboard({0.0f, 3.5f, 0.0f}, {2.0f, 2.0f});
+    setAnimation(bb, 0, SHEET_COLS * SHEET_ROWS, ANIM_FPS, 0.0f);
+    state.instances[BILLBOARD] = bb;
 
-    GLuint program = buildProgram(VERT_SRC, FRAG_SRC);
+    // The projectile.
+    state.instances[PROJECTILE] = makeProjectile(0.0f);
 
-    const int FRAME_COUNT = 4;
-    const float FRAME_DURATION = 0.2f; // seconds per frame
+    renderer.applyState(state);
+
+    // Time to return to launch height: -2*vy / ay.
+    const float flightTime = -2.0f * PROJ_VEL.y / PROJ_ACCEL.y;
 
     bool running = true;
+    int activeCam = 0;
+    float projectileLaunch = 0.0f;
     SDL_Event event;
     Uint64 startTicks = SDL_GetTicks64();
 
     while (running) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) running = false;
-            if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
-                running = false;
+            if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_ESCAPE) running = false;
+                if (event.key.keysym.sym == SDLK_c) activeCam = (activeCam + 1) % 2;
+            }
         }
 
         float t = (float)(SDL_GetTicks64() - startTicks) / 1000.0f;
-        int frame = (int)(t / FRAME_DURATION) % FRAME_COUNT;
 
-        glClearColor(0.08f, 0.08f, 0.12f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        // Per-frame: move the cameras (cheap — just uniforms) and re-launch the
+        // projectile only when it lands (the one moment its trajectory changes).
+        Diff diff;
+        diff.replaceCameras = true;
+        diff.cameras = buildCameras(t * 0.3f);
+        diff.setActiveCamera = true;
+        diff.activeCamera = activeCam;
 
-        glUseProgram(program);
-        glUniform1f(glGetUniformLocation(program, "uTime"), t);
-        glUniform1i(glGetUniformLocation(program, "uFrameCount"), FRAME_COUNT);
-        glUniform1i(glGetUniformLocation(program, "uFrame"), frame);
+        if (t - projectileLaunch >= flightTime) {
+            projectileLaunch = t;
+            diff.upserts.push_back({PROJECTILE, makeProjectile(t)});
+        }
 
-        glBindVertexArray(vao);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-
+        renderer.applyDiff(diff);
+        renderer.render(t);
         SDL_GL_SwapWindow(window);
     }
 
-    glDeleteVertexArrays(1, &vao);
-    glDeleteBuffers(1, &vbo);
-    glDeleteBuffers(1, &ebo);
-    glDeleteProgram(program);
+    renderer.shutdown();
     SDL_GL_DeleteContext(ctx);
     SDL_DestroyWindow(window);
     SDL_Quit();
