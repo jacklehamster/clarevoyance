@@ -184,8 +184,19 @@ src/engine/
   world_state.h     — WorldState, Diff, EntityId
   renderer.h/.cpp   — Renderer: owns VAO/VBOs/program/texture, applyState/applyDiff/render
   main.cpp          — stress-test demo (penguin sprite sheet, orbiting camera)
+  screenshot.h/.cpp — captureFramebufferBase64, framebufferNonBlank (test helpers)
   third_party/
-    stb_image.h     — vendored v2.30
+    stb_image.h       — vendored v2.30
+    stb_image_write.h — vendored (used by screenshot.cpp for PNG encoding)
+
+tools/
+  imgdiff.c         — native pixel-diff tool for desktop/web parity checks
+
+scripts/
+  extract_shot.sh   — pulls base64 PNG from between CV_SHOT_BEGIN/CV_SHOT_END markers
+
+web/
+  pre.js            — Emscripten preRun hook (URL params → ENV, kept for reference)
 ```
 
 ---
@@ -203,6 +214,90 @@ Single draw call, instance buffer uploaded once at startup, animation entirely o
 | 1000×1000 | 1,000,000 | 60 (vsync) |
 
 GPU is not the bottleneck at any tested count. The 1M case costs ~90ms on initial buffer upload (72MB), then locks to vsync.
+
+---
+
+## Cross-Platform Build
+
+The same C++ source compiles to desktop (OpenGL 3.3 Core) and browser (WebGL 2 / GLES 3.0) via Emscripten. Four seams isolate all platform differences:
+
+### 1. GL header — `src/engine/gl.h`
+
+Already branches correctly: desktop includes `<GL/gl.h>` (macOS: `<OpenGL/gl3.h>`), Emscripten includes `<GLES3/gl3.h>`. No change needed here — just don't bypass it.
+
+### 2. GL context attributes — `src/engine/main.cpp`
+
+WebGL 2 requires a GLES 3.0 context (minor version 0, profile ES). Desktop needs 3.3 Core. Wrapped with `#ifdef __EMSCRIPTEN__`.
+
+**Rationale:** GLES 3.0 is a well-defined subset of OpenGL 3.3 Core. Everything the renderer uses — VAOs, `glDrawElementsInstanced`, `glVertexAttribDivisor`, integer uniforms, user fragment outputs — is core in GLES 3.0. No feature guards needed in engine code.
+
+### 3. GLSL version/precision header — `src/engine/shader.cpp`
+
+GLSL 3.30 Core and GLSL ES 3.00 differ only in the version directive and a missing default float precision in ES fragment shaders. The shader bodies are identical.
+
+`shaderHeader(GLenum type)` returns the correct preamble per platform and stage:
+```cpp
+// Desktop:   "#version 330 core\n"
+// WASM vert: "#version 300 es\n"
+// WASM frag: "#version 300 es\nprecision highp float;\nprecision highp int;\n"
+```
+
+`glShaderSource` is called with a two-element array `{header, source}` so `#version` is always the first token. Shader bodies in `renderer.cpp` contain no version directive.
+
+### 4. Main-loop wrapper — `src/engine/main.cpp`
+
+The browser owns the event loop; WASM cannot block. The loop body lives in a `frame(void*)` function:
+- **Desktop:** driven by a plain `while (ctx.running) frame(&ctx)`.
+- **WASM:** driven by `emscripten_set_main_loop_arg(frame, ctx, fps, 1)`.
+  - `fps = 0` → `requestAnimationFrame` (display-synced; pauses when the tab is in the background) — used for interactive mode.
+  - `fps = 60` → `setTimeout` at 60 Hz (fires even in background/hidden tabs) — used for test mode. **Critical:** `rAF` is suspended by Chrome for non-active tabs, so test mode must use `setTimeout`.
+  - `simulate_infinite_loop = 1`: `main()` never returns; `exit(0)` terminates and signals `emrun` with `EXIT_STATUS:0`. Required with `EXIT_RUNTIME=1 + --emrun`.
+
+### Makefile
+
+`WASM_FLAGS` key flags:
+- `-sUSE_SDL=2 -sUSE_WEBGL2=1 -sFULL_ES3=1` — Emscripten SDL2 port + WebGL 2 mapping.
+- `-sEXIT_RUNTIME=1` — allows `exit()` / atexit handlers to work in WASM.
+- `--emrun` — compiles in stdout forwarding to the emrun HTTP server (required for `exit()` to signal `emrun`; incompatible with `EXIT_RUNTIME=0`).
+- `--preload-file art` — packages `art/` into `index.data`; virtual path `art/penguin.png` is identical to desktop, so no path changes in engine code.
+
+---
+
+## Testing
+
+### Architecture
+
+All test config is read via `getenv()` in C++. Platform differences are transparent to the test code:
+- **Desktop:** real shell env vars (`CV_TEST_FRAMES=120 CV_FIXED_TIME=2.0 CV_SCREENSHOT=1 ./clarevoyance`).
+- **WASM:** URL query params read directly via `EM_ASM` + `URLSearchParams` in `main.cpp`. (`ENV` injection via `pre.js` exists but was unreliable under Emscripten 6.0 closure scoping.)
+
+### Config keys
+
+| Key | Effect |
+|-----|--------|
+| `CV_TEST_FRAMES=N` | Render N frames then exit 0. Unset → run forever. |
+| `CV_FIXED_TIME=T` | Use constant `t = T` seconds every frame instead of wall clock. Makes output deterministic across runs and platforms. |
+| `CV_SCREENSHOT=1` | On the final test frame, capture the back buffer as a base64 PNG between `CV_SHOT_BEGIN` / `CV_SHOT_END` markers on stdout. |
+
+### Screenshot capture — `src/engine/screenshot.{h,cpp}`
+
+- `captureFramebufferBase64(int w, int h)`: `glReadPixels` → vertical flip → `stbi_write_png_to_func` → base64 → `printf` between markers. Identical on both platforms.
+- `framebufferNonBlank(int w, int h)`: counts pixels differing from clear color; logs `CV_BLANK` if below 1% threshold (catches blank-screen regressions automatically).
+- `scripts/extract_shot.sh <log> <out.png>`: extracts the first base64 block from the log and decodes it. Used by both `make test` and `make test-wasm`.
+
+### Parity diff — `tools/imgdiff.c`
+
+Native C tool (no new deps, built with `clang`). Reads two PNGs via `stb_image`, asserts equal dimensions, reports mean absolute per-channel difference (0–255) and % of pixels exceeding a per-pixel epsilon. Exits 0 if mean ≤ tolerance, else 1.
+
+Current baseline: **0.00/255 mean diff, 0.0% pixels differ** — desktop (OpenGL 3.3 Core / Metal) and web (WebGL 2 / ANGLE) render pixel-identically at fixed time.
+
+### emrun integration
+
+`emrun --kill-exit --timeout 30 "index.html?..."` launches Chrome, captures stdout via HTTP POST (the `--emrun`-compiled binary POSTs each line), and terminates when the WASM calls `exit(0)`. `--kill-exit` closes the browser process; `--timeout 30` kills everything if the test hangs.
+
+### one-shot guard
+
+`exit(0)` in Emscripten does not immediately stop the loop — more frame callbacks fire during cleanup. `LoopContext::testDone` is a boolean that ensures the screenshot/exit block runs exactly once.
 
 ---
 

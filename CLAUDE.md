@@ -162,16 +162,45 @@ for Clare's father's death. His unchecked ambitions would fracture the kingdom.
 
 ## Build & Run
 
-*(To be completed once project is initialized)*
+### Prerequisite (WebAssembly only)
+
+The Emscripten toolchain must be sourced before any WASM target:
 
 ```bash
-# Placeholders — fill in after first session
-make build
-make run
-
-# WebAssembly build (browser target)
-make build-wasm
+source ~/emsdk/emsdk_env.sh   # adds emcc / emrun to PATH for the session
 ```
+
+Install once if needed:
+```bash
+git clone https://github.com/emscripten-core/emsdk.git ~/emsdk
+cd ~/emsdk && ./emsdk install latest && ./emsdk activate latest
+```
+
+### Desktop
+
+```bash
+make build    # compile → build/clarevoyance
+make run      # bundle into build/Clarevoyance.app and open it
+make clean    # remove build/ and tools/imgdiff
+```
+
+### WebAssembly (browser)
+
+```bash
+make build-wasm   # compile → build/web/index.{html,js,wasm,data}
+make run-wasm     # build-wasm + emrun (serves on localhost, opens browser)
+```
+
+### Automated tests
+
+```bash
+make test          # desktop: render 120 frames at t=2.0s, capture screenshot
+make test-wasm     # web: same via emrun + Chrome (closes automatically)
+make test-parity   # pixel-diff desktop.png vs web.png — exits 1 if images diverge
+```
+
+Screenshots land in `build/test/` (`desktop.png`, `web.png`).
+Test config is controlled by `TEST_FRAMES` and `TEST_TIME` in the Makefile.
 
 ---
 
