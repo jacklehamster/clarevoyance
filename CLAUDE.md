@@ -202,6 +202,36 @@ make test-parity   # pixel-diff desktop.png vs web.png — exits 1 if images div
 Screenshots land in `build/test/` (`desktop.png`, `web.png`).
 Test config is controlled by `TEST_FRAMES` and `TEST_TIME` in the Makefile.
 
+### Deploy (Cloudflare Pages)
+
+The live site is hosted at **https://clare.dobuki.net** (also https://clarevoyance.pages.dev).
+
+Cloudflare Pages is configured with no build command — WASM must be pre-built locally because
+Emscripten is not available on Cloudflare's build machines. The built output is committed to
+`docs-web/` and Cloudflare serves it directly.
+
+```bash
+# Full deploy (build + commit + push → CF auto-deploys)
+source ~/emsdk/emsdk_env.sh && make build-wasm
+mkdir -p docs-web && cp build/web/* docs-web/
+git add docs-web/ && git commit -m "Deploy: update WASM build" && git push origin main
+```
+
+Or use the `/deploy` slash command in Claude Code.
+
+**Cloudflare config:**
+- Pages project: `clarevoyance`
+- Account: Vincent (`1fe1ef92444f52ef8d7ff09c175d034e`)
+- dobuki.net zone: `849149529f0b407bc3215d3f0986d08d`
+- Output directory: `docs-web/`
+- Dashboard: https://dash.cloudflare.com/1fe1ef92444f52ef8d7ff09c175d034e/pages/view/clarevoyance
+
+**Cloudflare MCP (for AI agents):**
+The `cloudflare-api` MCP plugin is configured in `~/.claude/settings.json` globally. It authenticates
+via OAuth and exposes `mcp__plugin_cloudflare_cloudflare-api__execute` for direct API calls.
+The plugin is from the `cloudflare/skills` marketplace (`cloudflare@cloudflare` in `enabledPlugins`).
+If the MCP needs re-authentication, call `mcp__plugin_cloudflare_cloudflare-api__authenticate`.
+
 ---
 
 ## Coding Conventions

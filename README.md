@@ -26,6 +26,30 @@ Clare, a young woman with clairvoyance since birth, races to prevent her King's 
   STORY.md      — full narrative and character reference
 ```
 
+## Build
+
+### Desktop
+```bash
+make build    # → build/clarevoyance
+make run      # build + open .app
+```
+
+### Browser (WebAssembly)
+```bash
+source ~/emsdk/emsdk_env.sh
+make build-wasm   # → build/web/
+make run-wasm     # build + serve locally
+```
+
+### Deploy to Cloudflare Pages
+```bash
+source ~/emsdk/emsdk_env.sh && make build-wasm
+mkdir -p docs-web && cp build/web/* docs-web/
+git add docs-web/ && git commit -m "Deploy: update WASM" && git push
+```
+
+Live at: https://clare.dobuki.net
+
 ## Status
 
-Pre-production. See [CLAUDE.md](CLAUDE.md) for first session goal.
+Pre-production. See [CLAUDE.md](CLAUDE.md) for architecture decisions and [docs/STORY.md](docs/STORY.md) for the full narrative.

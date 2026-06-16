@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make *)",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(source ~/emsdk/emsdk_env.sh *)",
+      "Bash(cp build/web/* docs-web/)",
+      "Bash(mkdir -p docs-web)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://clare.dobuki.net)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://clarevoyance.pages.dev)",
+      "mcp__plugin_cloudflare_cloudflare-api__execute",
+      "mcp__plugin_cloudflare_cloudflare-api__search"
+    ]
+  }
+}
