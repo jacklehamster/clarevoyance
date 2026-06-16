@@ -12,8 +12,6 @@ namespace cv {
 // ---------------------------------------------------------------------------
 
 static const char* VERT_SRC = R"glsl(
-#version 330 core
-
 // Shared quad geometry.
 layout(location = 0) in vec2 aCorner;  // unit quad in [-0.5, 0.5]
 layout(location = 1) in vec2 aUV;      // base UV, [0,1], v=0 at top
@@ -72,8 +70,6 @@ void main() {
 )glsl";
 
 static const char* FRAG_SRC = R"glsl(
-#version 330 core
-
 in vec2 vUV;
 out vec4 fragColor;
 

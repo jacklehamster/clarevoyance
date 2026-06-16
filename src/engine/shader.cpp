@@ -4,9 +4,21 @@
 
 namespace cv {
 
+static const char* shaderHeader(GLenum type) {
+#ifdef __EMSCRIPTEN__
+    if (type == GL_FRAGMENT_SHADER)
+        return "#version 300 es\nprecision highp float;\nprecision highp int;\n";
+    return "#version 300 es\n";
+#else
+    (void)type;
+    return "#version 330 core\n";
+#endif
+}
+
 GLuint compileShader(GLenum type, const char* src) {
     GLuint s = glCreateShader(type);
-    glShaderSource(s, 1, &src, nullptr);
+    const char* parts[2] = { shaderHeader(type), src };
+    glShaderSource(s, 2, parts, nullptr);
     glCompileShader(s);
     GLint ok = GL_FALSE;
     glGetShaderiv(s, GL_COMPILE_STATUS, &ok);

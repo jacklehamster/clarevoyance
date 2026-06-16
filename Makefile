@@ -8,12 +8,32 @@ else
 GL_FLAGS := -lGL
 endif
 
+# Emscripten — invoked via subshell so emsdk_env.sh is sourced per call.
+EMSDK_ENV := source $(HOME)/emsdk/emsdk_env.sh 2>/dev/null
+WASM_OUT  := build/web
+WASM_FLAGS := -std=c++17 -O2 -Isrc/engine \
+              -sUSE_SDL=2 -sUSE_WEBGL2=1 -sFULL_ES3=1 \
+              -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
+              -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=1 \
+              --emrun \
+              --preload-file art \
+              --pre-js web/pre.js
+
 SRC  := $(wildcard src/engine/*.cpp)
 BIN  := build/clarevoyance
 APP  := build/Clarevoyance.app
 EXE  := $(APP)/Contents/MacOS/clarevoyance
 
-.PHONY: all build bundle run clean
+TEST_DIR  := build/test
+IMGDIFF   := tools/imgdiff
+
+# Test parameters — deterministic fixed frame, enough frames to get past upload.
+TEST_FRAMES := 120
+TEST_TIME   := 2.0
+
+.PHONY: all build bundle run clean \
+        build-wasm run-wasm \
+        test test-wasm test-parity
 
 all: bundle
 
@@ -41,5 +61,52 @@ bundle: $(BIN)
 run: bundle
 	open $(APP)
 
+# ---------------------------------------------------------------------------
+# WebAssembly
+# ---------------------------------------------------------------------------
+
+build-wasm: $(SRC) $(wildcard src/engine/*.h) web/pre.js
+	@mkdir -p $(WASM_OUT)
+	bash -c '$(EMSDK_ENV) && emcc $(WASM_FLAGS) $(SRC) -o $(WASM_OUT)/index.html'
+
+run-wasm: build-wasm
+	bash -c '$(EMSDK_ENV) && emrun $(WASM_OUT)/index.html'
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+$(IMGDIFF): tools/imgdiff.c src/engine/third_party/stb_image.h
+	clang -O2 -Isrc/engine -o $@ $< -lm
+
+test: build $(IMGDIFF)
+	@mkdir -p $(TEST_DIR)
+	@echo "--- Desktop test ($(TEST_FRAMES) frames, t=$(TEST_TIME)) ---"
+	CV_TEST_FRAMES=$(TEST_FRAMES) CV_FIXED_TIME=$(TEST_TIME) CV_SCREENSHOT=1 \
+	    $(BIN) 2>&1 | tee $(TEST_DIR)/desktop.log
+	@if grep -q "CV_GLERROR" $(TEST_DIR)/desktop.log; then \
+	    echo "FAIL: GL errors detected"; exit 1; fi
+	@if grep -q "CV_BLANK" $(TEST_DIR)/desktop.log; then \
+	    echo "FAIL: blank framebuffer"; exit 1; fi
+	@bash scripts/extract_shot.sh $(TEST_DIR)/desktop.log $(TEST_DIR)/desktop.png
+	@echo "Desktop test PASSED"
+
+test-wasm: build-wasm
+	@mkdir -p $(TEST_DIR)
+	@echo "--- Web test ($(TEST_FRAMES) frames, t=$(TEST_TIME)) ---"
+	bash -c '$(EMSDK_ENV) && emrun --kill-exit --timeout 30 \
+	    "$(WASM_OUT)/index.html?CV_TEST_FRAMES=$(TEST_FRAMES)&CV_FIXED_TIME=$(TEST_TIME)&CV_SCREENSHOT=1" \
+	    2>&1 | tee $(TEST_DIR)/web.log'
+	@if grep -q "CV_GLERROR" $(TEST_DIR)/web.log; then \
+	    echo "FAIL: GL errors detected (web)"; exit 1; fi
+	@if grep -q "CV_BLANK" $(TEST_DIR)/web.log; then \
+	    echo "FAIL: blank framebuffer (web)"; exit 1; fi
+	@bash scripts/extract_shot.sh $(TEST_DIR)/web.log $(TEST_DIR)/web.png
+	@echo "Web test PASSED"
+
+test-parity: $(TEST_DIR)/desktop.png $(TEST_DIR)/web.png $(IMGDIFF)
+	@echo "--- Parity diff: desktop vs web ---"
+	$(IMGDIFF) $(TEST_DIR)/desktop.png $(TEST_DIR)/web.png
+
 clean:
-	rm -rf build
+	rm -rf build tools/imgdiff
