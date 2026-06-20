@@ -219,6 +219,17 @@ int main(int, char**) {
     SDL_GLContext glCtx = SDL_GL_CreateContext(window);
     if (!glCtx) { SDL_DestroyWindow(window); SDL_Quit(); return 1; }
     SDL_GL_SetSwapInterval(1);
+
+#if !defined(__EMSCRIPTEN__) && !defined(__APPLE__)
+    glewExperimental = GL_TRUE;
+    GLenum glewErr = glewInit();
+    if (glewErr != GLEW_OK) {
+        SDL_Log("GLEW init failed: %s", glewGetErrorString(glewErr));
+        SDL_GL_DeleteContext(glCtx); SDL_DestroyWindow(window); SDL_Quit();
+        return 1;
+    }
+#endif
+
     SDL_Log("OpenGL: %s", glGetString(GL_VERSION));
 
     Renderer renderer;

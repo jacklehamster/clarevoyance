@@ -10,6 +10,6 @@
 #elif defined(__EMSCRIPTEN__)
     #include <GLES3/gl3.h>
 #else
-    // Desktop Linux/Windows would load via GLAD/GLEW here; reserved for later.
-    #include <GL/gl3.h>
+    // Linux desktop: GLEW loads all GL function pointers at runtime
+    #include <GL/glew.h>
 #endif

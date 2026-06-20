@@ -5,7 +5,7 @@ UNAME_S  := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
 GL_FLAGS := -framework OpenGL
 else
-GL_FLAGS := -lGL
+GL_FLAGS := -lGL -lGLEW
 endif
 
 # Emscripten — invoked via subshell so emsdk_env.sh is sourced per call.
