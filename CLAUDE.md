@@ -234,6 +234,30 @@ If the MCP needs re-authentication, call `mcp__plugin_cloudflare_cloudflare-api_
 
 ---
 
+## GitHub Push — Known Issue with Remote Sessions
+
+**`git push` may fail with 403 in Slack-initiated or other remote sessions.** The built-in
+git proxy is provisioned read-only in these environments. This is a known limitation.
+
+**Workaround:** Use the `GITHUB_PAT` environment variable (a classic GitHub PAT with `repo` scope).
+
+- If `GITHUB_PAT` is set, use the `/push-github` skill — it will push via the token and restore
+  the original remote URL afterward.
+- If `GITHUB_PAT` is not set, ask the user: *"The git proxy is read-only in this session.
+  Can you provide a classic GitHub PAT (github.com/settings/tokens, repo scope) so I can push?"*
+  Once they paste it, use it as `GITHUB_PAT` and invoke `/push-github`.
+
+The user's local `~/.claude/settings.json` should have:
+```json
+{ "env": { "GITHUB_PAT": "<their token>" } }
+```
+This makes it available automatically in local sessions. Remote sessions need it re-entered
+each time (or configured in the environment at code.claude.com).
+
+The `/push-github` skill documents the full procedure.
+
+---
+
 ## Coding Conventions
 
 *(To be expanded as patterns emerge — add decisions here as they're made)*
