@@ -21,8 +21,17 @@
 
 #include "renderer.h"
 #include "screenshot.h"
+#include "scene.h"
+#include "events.h"
 
 using namespace cv;
+
+// Evaluate an instance's motion formula on the CPU (mirror of the GPU path):
+//   pos(t) = pos + vel*(t-start) + 0.5*accel*(t-start)^2
+static Vec3 positionAt(const Instance& inst, float t) {
+    float dt = t - inst.motionStart;
+    return inst.pos + inst.vel * dt + inst.accel * (0.5f * dt * dt);
+}
 
 // --- Sprite sheet -----------------------------------------------------------
 // penguin.png: 4096×256, 16 cols × 1 row of 256×256 cells.
@@ -95,6 +104,10 @@ struct LoopContext {
     bool        doScreenshot;
     int         framesRendered;
     bool        testDone;      // one-shot guard: exit(0) queues more callbacks on WASM
+    // scene mode (data-driven script layer); null in the stress-test demo
+    Scene*       scene;
+    EventSystem* events;
+    std::unordered_map<EntityId, Instance>* entities;  // working copy for sim
 };
 
 static void frame(void* arg) {
@@ -114,13 +127,30 @@ static void frame(void* arg) {
         ? ctx->fixedTime
         : (float)(SDL_GetTicks64() - ctx->startTicks) / 1000.0f;
 
-    // Only thing that changes each frame: the camera orbit (uniforms only).
-    Diff diff;
-    diff.replaceCameras  = true;
-    diff.cameras         = buildCameras(t * 0.1f);
-    diff.setActiveCamera = true;
-    diff.activeCamera    = ctx->activeCam;
-    ctx->renderer->applyDiff(diff);
+    if (ctx->scene) {
+        // Data-driven script layer: advance the sim, evaluate events, apply the
+        // resulting Diff. The camera is fixed by the scene (no orbit).
+        std::unordered_map<EntityId, Vec3> positions;
+        for (const auto& kv : *ctx->entities)
+            positions[kv.first] = positionAt(kv.second, t);
+
+        Diff diff;
+        ctx->events->update(*ctx->scene, positions, diff);
+        // Keep our working copy in sync so positions/removals carry forward.
+        for (const auto& up : diff.upserts) (*ctx->entities)[up.first] = up.second;
+        for (EntityId id : diff.removals)   ctx->entities->erase(id);
+        if (!diff.upserts.empty() || !diff.removals.empty())
+            ctx->renderer->applyDiff(diff);
+    } else {
+        // Stress-test demo: the only thing that changes each frame is the
+        // camera orbit (uniforms only).
+        Diff diff;
+        diff.replaceCameras  = true;
+        diff.cameras         = buildCameras(t * 0.1f);
+        diff.setActiveCamera = true;
+        diff.activeCamera    = ctx->activeCam;
+        ctx->renderer->applyDiff(diff);
+    }
 
     ctx->renderer->render(t);
 
@@ -171,22 +201,25 @@ int main(int, char**) {
     int   testFrames  = 0;
     float fixedTime   = -1.0f;
     bool  doScreenshot = false;
+    std::string scenePath;   // CV_SCENE=path → run the data-driven scene instead of the demo
 
 #ifdef __EMSCRIPTEN__
     // Read test params from URL query string directly — ENV scoping in
     // Emscripten 6.0 closures makes getenv() unreliable from pre.js.
     {
-        char buf[64] = {};
+        char buf[256] = {};
         EM_ASM({
             var p = new URLSearchParams(location.search);
             var v;
             if ((v = p.get('CV_TEST_FRAMES'))) stringToUTF8(v, $0, 64);
             if ((v = p.get('CV_FIXED_TIME')))  stringToUTF8(v, $1, 64);
             if ((v = p.get('CV_SCREENSHOT')))  stringToUTF8(v, $2, 64);
-        }, buf, buf + 16, buf + 32);
+            if ((v = p.get('CV_SCENE')))       stringToUTF8(v, $3, 128);
+        }, buf, buf + 16, buf + 32, buf + 48);
         if (buf[0])    testFrames   = std::atoi(buf);
         if (buf[16])   fixedTime    = std::atof(buf + 16);
         if (buf[32])   doScreenshot = (std::atoi(buf + 32) != 0);
+        if (buf[48])   scenePath    = (buf + 48);
         SDL_Log("Test mode: frames=%d fixedTime=%.1f screenshot=%d",
                 testFrames, fixedTime, doScreenshot ? 1 : 0);
     }
@@ -194,6 +227,7 @@ int main(int, char**) {
     if (const char* v = getenv("CV_TEST_FRAMES"))  testFrames   = std::atoi(v);
     if (const char* v = getenv("CV_FIXED_TIME"))   fixedTime    = std::atof(v);
     if (const char* v = getenv("CV_SCREENSHOT"))   doScreenshot = (std::atoi(v) != 0);
+    if (const char* v = getenv("CV_SCENE"))        scenePath    = v;
 #endif
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -232,39 +266,76 @@ int main(int, char**) {
 
     SDL_Log("OpenGL: %s", glGetString(GL_VERSION));
 
+    // --- Optionally load a data-driven scene (the script layer) -------------
+    // Heap-allocated so they outlive main() on the WASM async loop.
+    Scene*       scene   = nullptr;
+    EventSystem* events  = nullptr;
+    std::unordered_map<EntityId, Instance>* sceneEntities = nullptr;
+
+    const char* sheetPath = SHEET_PATH;
+    int sheetCols = SHEET_COLS, sheetRows = SHEET_ROWS;
+
+    if (!scenePath.empty()) {
+        scene = new Scene();
+        std::string err;
+        if (!loadScene(scenePath.c_str(), *scene, err)) {
+            SDL_Log("Scene load failed (%s): %s", scenePath.c_str(), err.c_str());
+            delete scene;
+            SDL_GL_DeleteContext(glCtx); SDL_DestroyWindow(window); SDL_Quit();
+            return 1;
+        }
+        sheetPath = scene->sheet.path.c_str();
+        sheetCols = scene->sheet.cols;
+        sheetRows = scene->sheet.rows;
+        SDL_Log("Loaded scene '%s': %zu entities, %zu events",
+                scenePath.c_str(), scene->initialState.instances.size(),
+                scene->events.size());
+    }
+
     Renderer renderer;
-    if (!renderer.init(SHEET_PATH, SHEET_COLS, SHEET_ROWS)) {
-        SDL_Log("Renderer init failed — is %s present?", SHEET_PATH);
+    if (!renderer.init(sheetPath, sheetCols, sheetRows)) {
+        SDL_Log("Renderer init failed — is %s present?", sheetPath);
+        delete scene;
         SDL_GL_DeleteContext(glCtx); SDL_DestroyWindow(window); SDL_Quit();
         return 1;
     }
     renderer.setViewport(WINDOW_W, WINDOW_H);
 
-    // --- Build the world once -----------------------------------------------
-    WorldState state;
-    state.cameras     = buildCameras(0.0f);
-    state.activeCamera = 0;
+    int total = 0;
+    if (scene) {
+        // --- Scene mode: upload the scene's world, prime the event system ---
+        renderer.applyState(scene->initialState);
+        events = new EventSystem();
+        events->init(*scene);
+        sceneEntities = new std::unordered_map<EntityId, Instance>(
+            scene->initialState.instances);
+        total = static_cast<int>(scene->initialState.instances.size());
+    } else {
+        // --- Stress-test demo: a dense grid of penguins, uploaded once ------
+        WorldState state;
+        state.cameras     = buildCameras(0.0f);
+        state.activeCamera = 0;
 
-    const int total = GRID_W * GRID_H;
-    SDL_Log("Spawning %d penguins…", total);
+        total = GRID_W * GRID_H;
+        SDL_Log("Spawning %d penguins…", total);
 
-    EntityId id = 1;
-    for (int row = 0; row < GRID_H; ++row) {
-        for (int col = 0; col < GRID_W; ++col, ++id) {
-            float x = col * GRID_STEP;
-            float z = row * GRID_STEP;
-            float animOffset = -(col + row * GRID_W) * (1.0f / ANIM_FPS);
-            int aIdx = (col + row) % NANIM;
+        EntityId id = 1;
+        for (int row = 0; row < GRID_H; ++row) {
+            for (int col = 0; col < GRID_W; ++col, ++id) {
+                float x = col * GRID_STEP;
+                float z = row * GRID_STEP;
+                float animOffset = -(col + row * GRID_W) * (1.0f / ANIM_FPS);
+                int aIdx = (col + row) % NANIM;
 
-            float s = GRID_STEP * 0.9f;
-            Instance inst = makeBillboard({x, s * 0.5f, z}, {s, s});
-            setAnimation(inst, ANIMS[aIdx].first, ANIMS[aIdx].count,
-                         ANIM_FPS, animOffset);
-            state.instances[id] = inst;
+                float s = GRID_STEP * 0.9f;
+                Instance inst = makeBillboard({x, s * 0.5f, z}, {s, s});
+                setAnimation(inst, ANIMS[aIdx].first, ANIMS[aIdx].count,
+                             ANIM_FPS, animOffset);
+                state.instances[id] = inst;
+            }
         }
+        renderer.applyState(state);  // one upload — never touched again
     }
-
-    renderer.applyState(state);  // one upload — never touched again
     SDL_Log("Buffer uploaded. Rendering %d instances per frame.", total);
 
     // --- Run loop -----------------------------------------------------------
@@ -276,7 +347,8 @@ int main(int, char**) {
         window, &renderer,
         startTicks, startTicks,
         0, 0, total, true,
-        testFrames, fixedTime, doScreenshot, 0, false
+        testFrames, fixedTime, doScreenshot, 0, false,
+        scene, events, sceneEntities
     };
     // fps=0  → requestAnimationFrame (display-synced, pauses in background) — interactive
     // fps=60 → setTimeout at 60 fps (runs even in hidden tabs)           — test mode
@@ -289,7 +361,8 @@ int main(int, char**) {
         window, &renderer,
         startTicks, startTicks,
         0, 0, total, true,
-        testFrames, fixedTime, doScreenshot, 0, false
+        testFrames, fixedTime, doScreenshot, 0, false,
+        scene, events, sceneEntities
     };
     while (ctx.running) frame(&ctx);
 
@@ -297,6 +370,9 @@ int main(int, char**) {
     SDL_GL_DeleteContext(glCtx);
     SDL_DestroyWindow(window);
     SDL_Quit();
+    delete sceneEntities;
+    delete events;
+    delete scene;
 #endif
     return 0;
 }

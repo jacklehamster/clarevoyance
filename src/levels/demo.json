@@ -1,0 +1,35 @@
+{
+  "sheet": { "path": "art/penguin.png", "cols": 16, "rows": 1 },
+
+  "cameras": [
+    { "projection": "perspective", "position": [6, 7, 16], "target": [6, 0, 5] }
+  ],
+  "activeCamera": 0,
+
+  "entities": [
+    {
+      "id": "player",
+      "pos": [0, 0.45, 5], "scale": [0.9, 0.9], "billboard": true,
+      "vel": [1.2, 0, 0],
+      "anim": { "first": 0, "count": 5, "fps": 10 }
+    },
+    {
+      "id": "mochi",
+      "pos": [11, 0.45, 5], "scale": [0.9, 0.9], "billboard": true,
+      "anim": { "first": 7, "count": 1, "fps": 0 }
+    }
+  ],
+
+  "events": [
+    {
+      "trigger": { "type": "proximity", "entity": "player", "target": "mochi", "radius": 1.5 },
+      "condition": { "flag": "mochi_seen", "value": false },
+      "once": true,
+      "actions": [
+        { "type": "dialogue", "id": "mochi_intro" },
+        { "type": "set_flag", "flag": "mochi_seen", "value": true },
+        { "type": "set_anim", "entity": "mochi", "first": 6, "count": 1, "fps": 0 }
+      ]
+    }
+  ]
+}
