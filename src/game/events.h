@@ -83,6 +83,7 @@ private:
                     const std::unordered_map<EntityId, Vec3>& positions,
                     const std::vector<Action>& actions, Diff& out);
 
+    bool firstStep_ = true;   // Start triggers fire only on the first update
     std::unordered_map<std::string, bool> flags_;
     std::unordered_map<EntityId, Instance> entities_;  // working copy for set_anim
 };

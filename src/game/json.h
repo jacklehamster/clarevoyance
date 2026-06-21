@@ -187,17 +187,35 @@ private:
         return fail("invalid literal");
     }
 
+    // Parse a JSON number (RFC 8259 grammar): an optional leading '-', an
+    // integer part, an optional fraction, and an optional exponent. Validating
+    // the shape here (rather than leaning on strtod) turns malformed tokens like
+    // "1.2.3", "--5", or a lone "-" into clear parse failures.
     bool parseNumber(JsonValue& out) {
         size_t start = pos_;
-        if (pos_ < text_.size() && (text_[pos_] == '-' || text_[pos_] == '+')) pos_++;
-        bool any = false;
-        while (pos_ < text_.size()) {
-            char c = text_[pos_];
-            if ((c >= '0' && c <= '9') || c == '.' || c == 'e' || c == 'E' ||
-                c == '+' || c == '-') { pos_++; any = true; }
-            else break;
+        bool hasDigit = false;
+
+        if (pos_ < text_.size() && text_[pos_] == '-') pos_++;   // JSON forbids leading '+'
+        while (pos_ < text_.size() && text_[pos_] >= '0' && text_[pos_] <= '9') {
+            pos_++; hasDigit = true;
         }
-        if (!any) return fail("invalid number");
+        if (pos_ < text_.size() && text_[pos_] == '.') {
+            pos_++;
+            while (pos_ < text_.size() && text_[pos_] >= '0' && text_[pos_] <= '9') {
+                pos_++; hasDigit = true;
+            }
+        }
+        if (pos_ < text_.size() && (text_[pos_] == 'e' || text_[pos_] == 'E')) {
+            pos_++;
+            if (pos_ < text_.size() && (text_[pos_] == '+' || text_[pos_] == '-')) pos_++;
+            bool expDigit = false;
+            while (pos_ < text_.size() && text_[pos_] >= '0' && text_[pos_] <= '9') {
+                pos_++; expDigit = true;
+            }
+            if (!expDigit) return fail("invalid number: exponent has no digits");
+        }
+        if (!hasDigit) return fail("invalid number");
+
         out.type = JsonValue::Type::Number;
         out.numVal = std::strtod(text_.c_str() + start, nullptr);
         return true;

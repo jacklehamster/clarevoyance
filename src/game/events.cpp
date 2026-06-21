@@ -9,6 +9,7 @@ namespace cv {
 
 void EventSystem::init(const Scene& scene) {
     flags_.clear();
+    firstStep_ = true;
     entities_ = scene.initialState.instances;  // working copy for animation swaps
 }
 
@@ -70,6 +71,9 @@ void EventSystem::update(Scene& scene,
                          float now,
                          const std::unordered_map<EntityId, Vec3>& positions,
                          Diff& out) {
+    const bool isFirstStep = firstStep_;
+    firstStep_ = false;
+
     for (Event& e : scene.events) {
         if (e.fired && e.once) continue;
         if (!conditionPasses(e.condition)) continue;
@@ -77,7 +81,7 @@ void EventSystem::update(Scene& scene,
         bool triggered = false;
         switch (e.trigger.type) {
             case Trigger::Type::Start:
-                triggered = true;
+                triggered = isFirstStep;
                 break;
 
             case Trigger::Type::Proximity: {
