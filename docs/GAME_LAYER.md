@@ -141,26 +141,85 @@ See [STORY.md](STORY.md) for character details. AI notes:
 
 ---
 
-## Event / Condition System
+## Script Layer (Scene Files)
 
-Game logic (dialogue triggers, door unlocks, combat encounters) is defined in data files.
-The C++ engine runs any game defined by those files with no engine changes.
+Game content is defined in **JSON scene files** (`src/levels/*.json`), parsed by the game
+layer into a `WorldState` plus a list of events. The engine is unchanged — it just renders
+the `WorldState` and applies the `Diff`s the event system emits. JSON was chosen over an
+embedded scripting language so the simulation stays trivially **deterministic** (data, not
+executed code) and identical across desktop / WASM / Switch.
 
-Format: TBD — likely JSON or a simple custom DSL.
+Implementation: `src/game/json.h` (parser), `src/game/scene.{h,cpp}` (loader),
+`src/game/events.{h,cpp}` (runtime). Run a scene with the `CV_SCENE` env var (desktop) or
+`?CV_SCENE=` query param (web).
+
+```bash
+make demo                          # runs src/levels/demo.json in a window
+make demo SCENE=src/levels/foo.json   # run a different scene
+```
+
+In the demo, the player penguin walks toward Mochi; when it gets within range a proximity
+event fires — printing `CV_DIALOGUE: mochi_intro`, flipping Mochi to a surprised frame, and
+sending Mochi leaping away via `set_motion`.
+
+### Scene schema
 
 ```json
 {
-  "trigger": { "type": "proximity", "entity": "player", "target": "npc_mochi", "radius": 2 },
-  "condition": { "flag": "mochi_freed", "value": false },
+  "sheet": { "path": "art/penguin.png", "cols": 16, "rows": 1 },
+  "cameras": [
+    { "projection": "perspective", "position": [6, 7, 16], "target": [6, 0, 5] }
+  ],
+  "activeCamera": 0,
+  "entities": [
+    { "id": "player", "pos": [0, 0.45, 5], "scale": [0.9, 0.9], "billboard": true,
+      "vel": [1.2, 0, 0], "anim": { "first": 0, "count": 5, "fps": 10 } },
+    { "id": "mochi",  "pos": [11, 0.45, 5], "scale": [0.9, 0.9], "billboard": true,
+      "anim": { "first": 7, "count": 1, "fps": 0 } }
+  ],
+  "events": [ /* see below */ ]
+}
+```
+
+Entities are referenced by string `id` in the data file; the loader assigns numeric
+`EntityId`s (starting at 1) and keeps the name→id map. Optional fields: `vel`, `accel`
+(motion, evaluated on the GPU and mirrored on the CPU for triggers), `rotation` (non-billboard).
+
+### Event / Condition / Action system
+
+Each event is a **trigger** + an optional **condition** + a list of **actions**, evaluated
+every simulation step. Triggers are pure functions of sim state (entity positions, flags) —
+no wall-clock, no `rand()` — so they fire deterministically.
+
+```json
+{
+  "trigger": { "type": "proximity", "entity": "player", "target": "mochi", "radius": 1.5 },
+  "condition": { "flag": "mochi_seen", "value": false },
+  "once": true,
   "actions": [
     { "type": "dialogue", "id": "mochi_intro" },
-    { "type": "set_flag", "flag": "mochi_freed", "value": true }
+    { "type": "set_flag", "flag": "mochi_seen", "value": true },
+    { "type": "set_anim", "entity": "mochi", "first": 6, "count": 1, "fps": 0 }
   ]
 }
 ```
 
-Events fire from the game layer's simulation step and may produce `Diff`s (e.g. spawning
-a new entity, changing an enemy's animation state).
+| Trigger     | Fields                          | Fires when |
+|-------------|---------------------------------|------------|
+| `start`     | —                               | first step (subject to condition) |
+| `proximity` | `entity`, `target`, `radius`    | distance(entity, target) ≤ radius |
+
+| Action       | Fields                                  | Effect |
+|--------------|-----------------------------------------|--------|
+| `dialogue`   | `id`                                    | emits a `CV_DIALOGUE: <id>` line (UI sink TBD) |
+| `set_flag`   | `flag`, `value`                         | sets a boolean flag |
+| `set_anim`   | `entity`, `first`, `count`, `fps`       | swaps an entity's animation (emits an upsert `Diff`) |
+| `set_motion` | `entity`, `vel`, `accel`                | rebases motion from the entity's current position and gives it a new velocity/acceleration (e.g. an enemy fleeing or a thrown arc) |
+| `remove`     | `entity`                                | despawns an entity (emits a removal `Diff`) |
+
+`once` (default true) fires the event at most once. Events run from the simulation step and
+produce `Diff`s the renderer applies — they never call GL. This is the same seam the
+clairvoyance lookahead uses, so shim ghosts and scripted events share one deterministic sim.
 
 ---
 

@@ -1,17 +1,17 @@
 CXX      := clang++
-CXXFLAGS := -std=c++17 -Wall -Wextra -O2 -DGL_SILENCE_DEPRECATION -Isrc/engine
+CXXFLAGS := -std=c++17 -Wall -Wextra -O2 -DGL_SILENCE_DEPRECATION -Isrc/engine -Isrc/game
 SDL2     := $(shell sdl2-config --cflags --libs)
 UNAME_S  := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
 GL_FLAGS := -framework OpenGL
 else
-GL_FLAGS := -lGL
+GL_FLAGS := -lGL -lGLEW
 endif
 
 # Emscripten — invoked via subshell so emsdk_env.sh is sourced per call.
 EMSDK_ENV := source $(HOME)/emsdk/emsdk_env.sh 2>/dev/null
 WASM_OUT  := build/web
-WASM_FLAGS := -std=c++17 -O2 -Isrc/engine \
+WASM_FLAGS := -std=c++17 -O2 -Isrc/engine -Isrc/game \
               -sUSE_SDL=2 -sUSE_WEBGL2=1 -sFULL_ES3=1 \
               -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
               -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=1 \
@@ -19,7 +19,7 @@ WASM_FLAGS := -std=c++17 -O2 -Isrc/engine \
               --preload-file art \
               --pre-js web/pre.js
 
-SRC  := $(wildcard src/engine/*.cpp)
+SRC  := $(wildcard src/engine/*.cpp) $(wildcard src/game/*.cpp)
 BIN  := build/clarevoyance
 APP  := build/Clarevoyance.app
 EXE  := $(APP)/Contents/MacOS/clarevoyance
@@ -31,15 +31,25 @@ IMGDIFF   := tools/imgdiff
 TEST_FRAMES := 120
 TEST_TIME   := 2.0
 
-.PHONY: all build bundle run clean \
+.PHONY: all build bundle run demo clean \
         build-wasm run-wasm \
         test test-wasm test-parity
+
+# Scene to run with `make demo` — override on the command line:
+#   make demo SCENE=src/levels/other.json
+SCENE ?= src/levels/demo.json
 
 all: bundle
 
 build: $(BIN)
 
-$(BIN): $(SRC) $(wildcard src/engine/*.h)
+# Run the data-driven scene demo (the script layer) in an interactive window.
+# The player penguin walks toward Mochi; a proximity event fires, printing
+# dialogue and making Mochi leap away. Watch the terminal for CV_DIALOGUE.
+demo: $(BIN)
+	CV_SCENE=$(SCENE) $(BIN)
+
+$(BIN): $(SRC) $(wildcard src/engine/*.h) $(wildcard src/game/*.h)
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) $(SDL2) $(GL_FLAGS) $(SRC) -o $@
 
@@ -65,7 +75,7 @@ run: bundle
 # WebAssembly
 # ---------------------------------------------------------------------------
 
-build-wasm: $(SRC) $(wildcard src/engine/*.h) web/pre.js
+build-wasm: $(SRC) $(wildcard src/engine/*.h) $(wildcard src/game/*.h) web/pre.js
 	@mkdir -p $(WASM_OUT)
 	bash -c '$(EMSDK_ENV) && emcc $(WASM_FLAGS) $(SRC) -o $(WASM_OUT)/index.html'
 
