@@ -32,17 +32,20 @@ struct Condition {
 };
 
 struct Action {
-    enum class Type { Dialogue, SetFlag, SetAnim, Remove };
+    enum class Type { Dialogue, SetFlag, SetAnim, SetMotion, Remove };
     Type type = Type::Dialogue;
 
     std::string id;         // dialogue: line id
     std::string flag;       // set_flag: flag name
     bool value = true;      // set_flag: value
 
-    std::string entity;     // set_anim / remove: target entity name
+    std::string entity;     // set_anim / set_motion / remove: target entity name
     int   first = 0;        // set_anim: first frame
     int   count = 1;        // set_anim: frame count
     float fps   = 0.0f;     // set_anim: frames per second
+
+    Vec3  vel   = {0, 0, 0}; // set_motion: new velocity
+    Vec3  accel = {0, 0, 0}; // set_motion: new acceleration
 };
 
 struct Event {
@@ -61,9 +64,11 @@ public:
     // clear all flags. Call once after the scene is loaded.
     void init(const Scene& scene);
 
-    // Evaluate all events against the given entity positions (keyed by id).
-    // Appends upserts/removals to `out` and applies flag/dialogue side effects.
+    // Evaluate all events against the given entity positions (keyed by id) at
+    // sim time `now`. Appends upserts/removals to `out` and applies flag/
+    // dialogue side effects. `now` lets set_motion rebase from current position.
     void update(Scene& scene,
+                float now,
                 const std::unordered_map<EntityId, Vec3>& positions,
                 Diff& out);
 
@@ -74,7 +79,9 @@ public:
 
 private:
     bool conditionPasses(const Condition& c) const;
-    void runActions(Scene& scene, const std::vector<Action>& actions, Diff& out);
+    void runActions(Scene& scene, float now,
+                    const std::unordered_map<EntityId, Vec3>& positions,
+                    const std::vector<Action>& actions, Diff& out);
 
     std::unordered_map<std::string, bool> flags_;
     std::unordered_map<EntityId, Instance> entities_;  // working copy for set_anim

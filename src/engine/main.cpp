@@ -135,7 +135,7 @@ static void frame(void* arg) {
             positions[kv.first] = positionAt(kv.second, t);
 
         Diff diff;
-        ctx->events->update(*ctx->scene, positions, diff);
+        ctx->events->update(*ctx->scene, t, positions, diff);
         // Keep our working copy in sync so positions/removals carry forward.
         for (const auto& up : diff.upserts) (*ctx->entities)[up.first] = up.second;
         for (EntityId id : diff.removals)   ctx->entities->erase(id);

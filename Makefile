@@ -31,13 +31,23 @@ IMGDIFF   := tools/imgdiff
 TEST_FRAMES := 120
 TEST_TIME   := 2.0
 
-.PHONY: all build bundle run clean \
+.PHONY: all build bundle run demo clean \
         build-wasm run-wasm \
         test test-wasm test-parity
+
+# Scene to run with `make demo` — override on the command line:
+#   make demo SCENE=src/levels/other.json
+SCENE ?= src/levels/demo.json
 
 all: bundle
 
 build: $(BIN)
+
+# Run the data-driven scene demo (the script layer) in an interactive window.
+# The player penguin walks toward Mochi; a proximity event fires, printing
+# dialogue and making Mochi leap away. Watch the terminal for CV_DIALOGUE.
+demo: $(BIN)
+	CV_SCENE=$(SCENE) $(BIN)
 
 $(BIN): $(SRC) $(wildcard src/engine/*.h) $(wildcard src/game/*.h)
 	@mkdir -p build

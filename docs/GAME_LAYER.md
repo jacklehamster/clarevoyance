@@ -151,7 +151,16 @@ executed code) and identical across desktop / WASM / Switch.
 
 Implementation: `src/game/json.h` (parser), `src/game/scene.{h,cpp}` (loader),
 `src/game/events.{h,cpp}` (runtime). Run a scene with the `CV_SCENE` env var (desktop) or
-`?CV_SCENE=` query param (web): `CV_SCENE=src/levels/demo.json make run` equivalent.
+`?CV_SCENE=` query param (web).
+
+```bash
+make demo                          # runs src/levels/demo.json in a window
+make demo SCENE=src/levels/foo.json   # run a different scene
+```
+
+In the demo, the player penguin walks toward Mochi; when it gets within range a proximity
+event fires — printing `CV_DIALOGUE: mochi_intro`, flipping Mochi to a surprised frame, and
+sending Mochi leaping away via `set_motion`.
 
 ### Scene schema
 
@@ -200,12 +209,13 @@ no wall-clock, no `rand()` — so they fire deterministically.
 | `start`     | —                               | first step (subject to condition) |
 | `proximity` | `entity`, `target`, `radius`    | distance(entity, target) ≤ radius |
 
-| Action      | Fields                                  | Effect |
-|-------------|-----------------------------------------|--------|
-| `dialogue`  | `id`                                    | emits a `CV_DIALOGUE: <id>` line (UI sink TBD) |
-| `set_flag`  | `flag`, `value`                         | sets a boolean flag |
-| `set_anim`  | `entity`, `first`, `count`, `fps`       | swaps an entity's animation (emits an upsert `Diff`) |
-| `remove`    | `entity`                                | despawns an entity (emits a removal `Diff`) |
+| Action       | Fields                                  | Effect |
+|--------------|-----------------------------------------|--------|
+| `dialogue`   | `id`                                    | emits a `CV_DIALOGUE: <id>` line (UI sink TBD) |
+| `set_flag`   | `flag`, `value`                         | sets a boolean flag |
+| `set_anim`   | `entity`, `first`, `count`, `fps`       | swaps an entity's animation (emits an upsert `Diff`) |
+| `set_motion` | `entity`, `vel`, `accel`                | rebases motion from the entity's current position and gives it a new velocity/acceleration (e.g. an enemy fleeing or a thrown arc) |
+| `remove`     | `entity`                                | despawns an entity (emits a removal `Diff`) |
 
 `once` (default true) fires the event at most once. Events run from the simulation step and
 produce `Diff`s the renderer applies — they never call GL. This is the same seam the

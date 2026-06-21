@@ -84,6 +84,11 @@ Action readAction(const JsonValue& a) {
         ac.first  = static_cast<int>(a.find("first") ? a.find("first")->number() : 0);
         ac.count  = static_cast<int>(a.find("count") ? a.find("count")->number() : 1);
         ac.fps    = a.find("fps") ? static_cast<float>(a.find("fps")->number()) : 0.0f;
+    } else if (type == "set_motion") {
+        ac.type   = Action::Type::SetMotion;
+        ac.entity = a.find("entity") ? a.find("entity")->string() : "";
+        ac.vel    = readVec3(a.find("vel"),   {0, 0, 0});
+        ac.accel  = readVec3(a.find("accel"), {0, 0, 0});
     } else if (type == "remove") {
         ac.type   = Action::Type::Remove;
         ac.entity = a.find("entity") ? a.find("entity")->string() : "";

@@ -17,7 +17,9 @@ bool EventSystem::conditionPasses(const Condition& c) const {
     return flag(c.flag) == c.value;
 }
 
-void EventSystem::runActions(Scene& scene, const std::vector<Action>& actions, Diff& out) {
+void EventSystem::runActions(Scene& scene, float now,
+                             const std::unordered_map<EntityId, Vec3>& positions,
+                             const std::vector<Action>& actions, Diff& out) {
     for (const Action& a : actions) {
         switch (a.type) {
             case Action::Type::Dialogue:
@@ -39,6 +41,20 @@ void EventSystem::runActions(Scene& scene, const std::vector<Action>& actions, D
                 break;
             }
 
+            case Action::Type::SetMotion: {
+                EntityId id = scene.idOf(a.entity);
+                if (id == 0) break;
+                auto it = entities_.find(id);
+                if (it == entities_.end()) break;
+                // Rebase the motion origin to the entity's current position so it
+                // continues from where it is rather than teleporting.
+                auto p = positions.find(id);
+                if (p != positions.end()) it->second.pos = p->second;
+                setMotion(it->second, a.vel, a.accel, now);
+                out.upserts.emplace_back(id, it->second);
+                break;
+            }
+
             case Action::Type::Remove: {
                 EntityId id = scene.idOf(a.entity);
                 if (id == 0) break;
@@ -51,6 +67,7 @@ void EventSystem::runActions(Scene& scene, const std::vector<Action>& actions, D
 }
 
 void EventSystem::update(Scene& scene,
+                         float now,
                          const std::unordered_map<EntityId, Vec3>& positions,
                          Diff& out) {
     for (Event& e : scene.events) {
@@ -79,7 +96,7 @@ void EventSystem::update(Scene& scene,
         }
 
         if (triggered) {
-            runActions(scene, e.actions, out);
+            runActions(scene, now, positions, e.actions, out);
             e.fired = true;
         }
     }
