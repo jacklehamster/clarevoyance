@@ -32,7 +32,9 @@ Camera readCamera(const JsonValue& c) {
     return cam;
 }
 
-Instance readEntity(const JsonValue& e) {
+// Build an entity's renderable Instance and fill its game-side attributes
+// (controlled/speed) from the same JSON object.
+Instance readEntity(const JsonValue& e, EntityAttrs& attrs) {
     Vec3 pos   = readVec3(e.find("pos"), {0, 0, 0});
     Vec2 scale = readVec2(e.find("scale"), {1, 1});
     bool bb = true;
@@ -54,6 +56,11 @@ Instance readEntity(const JsonValue& e) {
         float start = a->find("start") ? static_cast<float>(a->find("start")->number()) : 0.0f;
         setAnimation(inst, first, count, fps, start);
     }
+
+    // Game-side attributes (optional): movement input applies to any entity with
+    // controlled=true; speed is its movement rate in world units / second.
+    if (const JsonValue* c = e.find("controlled")) attrs.controlled = c->boolean(false);
+    if (const JsonValue* s = e.find("speed"))      attrs.speed = static_cast<float>(s->number(attrs.speed));
     return inst;
 }
 
@@ -65,6 +72,13 @@ Trigger readTrigger(const JsonValue& t) {
         tr.entity = t.find("entity") ? t.find("entity")->string() : "";
         tr.target = t.find("target") ? t.find("target")->string() : "";
         tr.radius = t.find("radius") ? static_cast<float>(t.find("radius")->number()) : 1.0f;
+    } else if (type == "input") {
+        tr.type = Trigger::Type::Input;
+        tr.action = t.find("action") ? t.find("action")->string() : "";
+        std::string edge = t.find("edge") ? t.find("edge")->string() : "pressed";
+        if (edge == "released")  tr.edge = Trigger::Edge::Released;
+        else if (edge == "held") tr.edge = Trigger::Edge::Held;
+        else                     tr.edge = Trigger::Edge::Pressed;  // default
     } else {
         tr.type = Trigger::Type::Start;
     }
@@ -92,6 +106,13 @@ Action readAction(const JsonValue& a) {
     } else if (type == "remove") {
         ac.type   = Action::Type::Remove;
         ac.entity = a.find("entity") ? a.find("entity")->string() : "";
+    } else if (type == "toggle_controlled") {
+        ac.type   = Action::Type::ToggleControlled;
+        ac.entity = a.find("entity") ? a.find("entity")->string() : "";
+    } else if (type == "set_controlled") {
+        ac.type   = Action::Type::SetControlled;
+        ac.entity = a.find("entity") ? a.find("entity")->string() : "";
+        ac.value  = a.find("value") ? a.find("value")->boolean(true) : true;
     } else {
         ac.type = Action::Type::Dialogue;
         ac.id   = a.find("id") ? a.find("id")->string() : "";
@@ -135,7 +156,9 @@ bool loadScene(const char* path, Scene& out, std::string& error) {
                 std::string name = e.find("id") ? e.find("id")->string() : "";
                 EntityId id = nextId++;
                 if (!name.empty()) out.nameToId[name] = id;
-                out.initialState.instances[id] = readEntity(e);
+                EntityAttrs attrs;
+                out.initialState.instances[id] = readEntity(e, attrs);
+                out.attrs[id] = attrs;
             }
         }
     }
@@ -159,6 +182,16 @@ bool loadScene(const char* path, Scene& out, std::string& error) {
                 }
                 out.events.push_back(std::move(event));
             }
+        }
+    }
+
+    // Controls — key name → abstract action. Key names are lowercase and
+    // device-agnostic; the engine resolves SDL keys to these names each frame.
+    if (const JsonValue* controls = root.find("controls")) {
+        if (const JsonValue* b = controls->find("bindings")) {
+            if (b->isObject())
+                for (const auto& kv : b->obj)
+                    out.bindings[kv.first] = kv.second.string();
         }
     }
 

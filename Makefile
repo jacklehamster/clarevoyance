@@ -48,7 +48,7 @@ IMGDIFF   := tools/imgdiff
 TEST_FRAMES := 120
 TEST_TIME   := 2.0
 
-.PHONY: all build bundle run demo clean \
+.PHONY: all build bundle run demo demo-controls demo-events clean \
         build-wasm run-wasm \
         build-wasm-script run-wasm-script \
         build-script run-script \
@@ -68,6 +68,16 @@ build: $(BIN)
 # dialogue and making Mochi leap away. Watch the terminal for CV_DIALOGUE.
 demo: $(BIN)
 	CV_SCENE=$(SCENE) $(BIN)
+
+# Keyboard-controls demo: WASD / arrows move the player penguin freely; press
+# space to toggle the buddy penguin into the controlled set so both move together.
+demo-controls: $(BIN)
+	CV_SCENE=src/levels/controls.json $(BIN)
+
+# Events demo: the player walks toward Mochi; a proximity event fires dialogue
+# and sends Mochi leaping away.
+demo-events: $(BIN)
+	CV_SCENE=src/levels/demo.json $(BIN)
 
 $(BIN): $(SRC) $(wildcard src/engine/*.h) $(wildcard src/game/*.h)
 	@mkdir -p build

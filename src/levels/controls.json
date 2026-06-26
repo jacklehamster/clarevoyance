@@ -1,0 +1,41 @@
+{
+  "sheet": { "path": "art/penguin.png", "cols": 16, "rows": 1 },
+
+  "cameras": [
+    { "projection": "perspective", "position": [0, 2.6, 6], "target": [0, 0.9, 0] }
+  ],
+  "activeCamera": 0,
+
+  "entities": [
+    {
+      "id": "player",
+      "pos": [-1.5, 0.9, 0], "scale": [1.8, 1.8], "billboard": true,
+      "controlled": true, "speed": 3.0,
+      "anim": { "first": 0, "count": 5, "fps": 10 }
+    },
+    {
+      "id": "buddy",
+      "pos": [1.5, 0.9, 0], "scale": [1.8, 1.8], "billboard": true,
+      "controlled": false, "speed": 3.0,
+      "anim": { "first": 0, "count": 5, "fps": 10 }
+    }
+  ],
+
+  "controls": {
+    "bindings": {
+      "w": "move_north", "a": "move_west", "s": "move_south", "d": "move_east",
+      "up": "move_north", "left": "move_west", "down": "move_south", "right": "move_east",
+      "space": "toggle_extra"
+    }
+  },
+
+  "events": [
+    {
+      "trigger": { "type": "input", "action": "toggle_extra", "edge": "pressed" },
+      "once": false,
+      "actions": [
+        { "type": "toggle_controlled", "entity": "buddy" }
+      ]
+    }
+  ]
+}
