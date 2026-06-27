@@ -15,9 +15,13 @@
 // Movement is FREE: the 90° grid lock applies to the camera, not characters.
 #pragma once
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
+
+#include <SDL2/SDL.h>
 
 #include "world_state.h"
 
@@ -70,5 +74,25 @@ void applyMovement(const ResolvedActions& actions,
                    float now,
                    const std::unordered_map<EntityId, Vec3>& positions,
                    Diff& out);
+
+// Abstract input source. Implement to feed ResolvedActions from any origin:
+// keyboard, replay file, network, or nothing (cutscenes).
+struct InputSource {
+    virtual ~InputSource() = default;
+    virtual ResolvedActions poll(const std::vector<SDL_Event>& events) = 0;
+};
+
+// Keyboard: resolves SDL key events through a bindings table.
+struct KeyboardInputSource : InputSource {
+    const Bindings& bindings;
+    InputFrame      prev;  // last frame's down set (for pressed/released detection)
+    explicit KeyboardInputSource(const Bindings& b) : bindings(b) {}
+    ResolvedActions poll(const std::vector<SDL_Event>& events) override;
+};
+
+// No-op: always returns empty action sets. Use for cutscenes and replays.
+struct NullInputSource : InputSource {
+    ResolvedActions poll(const std::vector<SDL_Event>&) override { return {}; }
+};
 
 } // namespace cv
