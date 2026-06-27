@@ -13,7 +13,9 @@
 #include <SDL.h>
 #include <cmath>
 #include <cstdlib>
+#include <memory>
 #include <string>
+#include <vector>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -25,26 +27,7 @@
 #include "events.h"
 #include "input.h"
 
-#include <cctype>
-
 using namespace cv;
-
-// Map an SDL key event to the device-agnostic lowercase key name the input layer
-// uses for bindings. Letters/digits pass through lowercased; arrows and space get
-// stable names. Returns "" for keys we don't expose (they bind to nothing).
-static std::string keyName(const SDL_Keysym& k) {
-    switch (k.sym) {
-        case SDLK_UP:    return "up";
-        case SDLK_DOWN:  return "down";
-        case SDLK_LEFT:  return "left";
-        case SDLK_RIGHT: return "right";
-        case SDLK_SPACE: return "space";
-        default: break;
-    }
-    std::string name = SDL_GetKeyName(k.sym);  // e.g. "W", "Escape"
-    if (name.size() != 1) return "";           // only single-character keys here
-    return std::string(1, static_cast<char>(std::tolower(name[0])));
-}
 
 // Evaluate an instance's motion formula on the CPU (mirror of the GPU path):
 //   pos(t) = pos + vel*(t-start) + 0.5*accel*(t-start)^2
@@ -128,15 +111,15 @@ struct LoopContext {
     Scene*       scene;
     EventSystem* events;
     std::unordered_map<EntityId, Instance>* entities;  // working copy for sim
-    InputFrame*  input;        // persistent keyboard state (down-set survives frames)
+    InputSource* inputSrc;   // pluggable input: keyboard, replay, null (cutscenes)
 };
 
 static void frame(void* arg) {
     LoopContext* ctx = static_cast<LoopContext*>(arg);
 
-    // Per-frame edge sets are rebuilt each frame; the down-set persists in ctx.
-    if (ctx->input) { ctx->input->pressed.clear(); ctx->input->released.clear(); }
-
+    // Collect all SDL events this frame. Engine-level events (quit, camera
+    // toggle) are handled here; the rest are forwarded to the input source.
+    std::vector<SDL_Event> sdlEvents;
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_QUIT) ctx->running = false;
@@ -144,22 +127,8 @@ static void frame(void* arg) {
             if (event.key.keysym.sym == SDLK_ESCAPE) ctx->running = false;
             if (event.key.keysym.sym == SDLK_c && event.key.repeat == 0)
                 ctx->activeCam = (ctx->activeCam + 1) % 2;
-            // Build the InputFrame: a fresh keydown (repeat==0) is a press.
-            if (ctx->input && event.key.repeat == 0) {
-                std::string name = keyName(event.key.keysym);
-                if (!name.empty()) {
-                    ctx->input->pressed.insert(name);
-                    ctx->input->down.insert(name);
-                }
-            }
         }
-        if (event.type == SDL_KEYUP && ctx->input) {
-            std::string name = keyName(event.key.keysym);
-            if (!name.empty()) {
-                ctx->input->released.insert(name);
-                ctx->input->down.erase(name);
-            }
-        }
+        sdlEvents.push_back(event);
     }
 
     float t = ctx->fixedTime >= 0.0f
@@ -175,7 +144,7 @@ static void frame(void* arg) {
         for (const auto& kv : *ctx->entities)
             positions[kv.first] = positionAt(kv.second, t);
 
-        ResolvedActions actions = resolveActions(*ctx->input, ctx->scene->bindings);
+        ResolvedActions actions = ctx->inputSrc->poll(sdlEvents);
 
         Diff diff;
         // Free movement: applies a velocity to every controlled entity.
@@ -318,7 +287,7 @@ int main(int, char**) {
     Scene*       scene   = nullptr;
     EventSystem* events  = nullptr;
     std::unordered_map<EntityId, Instance>* sceneEntities = nullptr;
-    InputFrame*  input   = new InputFrame();  // persistent keyboard state for scene mode
+    InputSource* inputSrc = nullptr;  // set after scene is loaded
 
     const char* sheetPath = SHEET_PATH;
     int sheetCols = SHEET_COLS, sheetRows = SHEET_ROWS;
@@ -359,7 +328,14 @@ int main(int, char**) {
         // renderer all share one logical instance map (no second copy to sync).
         sceneEntities = &events->entities();
         total = static_cast<int>(scene->initialState.instances.size());
+        // Choose input source: keyboard when bindings are defined, null otherwise.
+        if (!scene->bindings.empty())
+            inputSrc = new KeyboardInputSource(scene->bindings);
+        else
+            inputSrc = new NullInputSource();
     } else {
+        // Stress-test demo has no scene; use a NullInputSource as placeholder.
+        inputSrc = new NullInputSource();
         // --- Stress-test demo: a dense grid of penguins, uploaded once ------
         WorldState state;
         state.cameras     = buildCameras(0.0f);
@@ -397,7 +373,7 @@ int main(int, char**) {
         startTicks, startTicks,
         0, 0, total, true,
         testFrames, fixedTime, doScreenshot, 0, false,
-        scene, events, sceneEntities, input
+        scene, events, sceneEntities, inputSrc
     };
     // fps=0  → requestAnimationFrame (display-synced, pauses in background) — interactive
     // fps=60 → setTimeout at 60 fps (runs even in hidden tabs)           — test mode
@@ -411,7 +387,7 @@ int main(int, char**) {
         startTicks, startTicks,
         0, 0, total, true,
         testFrames, fixedTime, doScreenshot, 0, false,
-        scene, events, sceneEntities, input
+        scene, events, sceneEntities, inputSrc
     };
     while (ctx.running) frame(&ctx);
 
@@ -420,7 +396,7 @@ int main(int, char**) {
     SDL_DestroyWindow(window);
     SDL_Quit();
     // sceneEntities aliases events->entities() — owned by `events`, not freed here.
-    delete input;
+    delete inputSrc;
     delete events;
     delete scene;
 #endif
