@@ -121,6 +121,13 @@ static void frame(void* arg) {
             if (event.key.keysym.sym == SDLK_c && event.key.repeat == 0)
                 ctx->activeCam = (ctx->activeCam + 1) % 2;
         }
+        if (event.type == SDL_WINDOWEVENT &&
+            (event.window.event == SDL_WINDOWEVENT_RESIZED ||
+             event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)) {
+            int w = event.window.data1;
+            int h = event.window.data2;
+            ctx->renderer->setViewport(w, h);
+        }
     }
 
     float t = ctx->fixedTime >= 0.0f

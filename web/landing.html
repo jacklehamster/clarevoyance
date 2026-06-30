@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clarevoyance</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0f;
+      color: #e8e0d0;
+      font-family: 'Georgia', serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 6vw, 4rem);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #c8b8e8;
+      text-shadow: 0 0 40px rgba(160, 100, 255, 0.5);
+      margin-bottom: 0.4em;
+    }
+
+    .subtitle {
+      font-size: clamp(0.85rem, 2vw, 1.1rem);
+      color: #7a6e8a;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 3.5rem;
+    }
+
+    .demos {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .demo-card {
+      background: #12101a;
+      border: 1px solid #2a2040;
+      border-radius: 8px;
+      padding: 2rem 2.5rem;
+      width: 260px;
+      text-align: center;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+    }
+
+    .demo-card:hover {
+      border-color: #7040c0;
+      box-shadow: 0 0 24px rgba(112, 64, 192, 0.3);
+      transform: translateY(-3px);
+    }
+
+    .demo-card .icon {
+      font-size: 2.8rem;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    .demo-card h2 {
+      font-size: 1.1rem;
+      letter-spacing: 0.08em;
+      color: #c8b8e8;
+      margin-bottom: 0.6rem;
+    }
+
+    .demo-card p {
+      font-size: 0.82rem;
+      color: #6a5e7a;
+      line-height: 1.6;
+    }
+
+    footer {
+      margin-top: 4rem;
+      font-size: 0.75rem;
+      color: #3a3048;
+      letter-spacing: 0.1em;
+    }
+  </style>
+</head>
+<body>
+  <h1>Clarevoyance</h1>
+  <p class="subtitle">Fantasy RPG Engine — Work in Progress</p>
+
+  <div class="demos">
+    <a class="demo-card" href="script.html">
+      <span class="icon">🐧</span>
+      <h2>Script Demo</h2>
+      <p>Data-driven scene: walkers, bouncers, and idlers animated from a JSON definition.</p>
+    </a>
+
+    <a class="demo-card" href="stress.html">
+      <span class="icon">⚡</span>
+      <h2>Stress Test</h2>
+      <p>900 billboarded sprites, GPU-driven animation, orbiting camera. Tests raw throughput.</p>
+    </a>
+  </div>
+
+  <footer>C to toggle camera &nbsp;·&nbsp; F to fullscreen &nbsp;·&nbsp; ESC to quit</footer>
+</body>
+</html>

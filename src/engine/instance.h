@@ -29,6 +29,11 @@ struct Instance {
 
     // Animation: firstFrame, frameCount, framesPerSecond, animStart.
     Vec4 anim = {0, 1, 0, 0};
+
+    // Tint: RGBA multiplier applied in the fragment shader.
+    // Default (1,1,1,1) = fully opaque, unmodified colour.
+    // Set alpha < 1 for translucent shims; set rgb to tint the sprite.
+    Vec4 tint = {1, 1, 1, 1};
 };
 
 // Compile-time ABI guard: Instance is a binary contract with the GPU attribute

@@ -25,6 +25,7 @@ layout(location = 6) in vec2 iScale;
 layout(location = 7) in float iRotation;
 layout(location = 8) in float iBillboard;
 layout(location = 9) in vec4 iAnim;    // firstFrame, frameCount, fps, animStart
+layout(location = 10) in vec4 iTint;   // RGBA multiplier (1,1,1,1 = opaque)
 
 uniform mat4 uViewProj;
 uniform float uTime;
@@ -34,6 +35,7 @@ uniform vec3 uCamRight;
 uniform vec3 uCamUp;
 
 out vec2 vUV;
+out vec4 vTint;
 
 void main() {
     // --- Motion: evolve the sprite center from its launch params -----------
@@ -65,19 +67,21 @@ void main() {
     float rows = float(uSheetRows);
     float col = mod(cell, cols);
     float row = floor(cell / cols);
-    vUV = (vec2(col, row) + aUV) / vec2(cols, rows);
+    vUV  = (vec2(col, row) + aUV) / vec2(cols, rows);
+    vTint = iTint;
 }
 )glsl";
 
 static const char* FRAG_SRC = R"glsl(
 in vec2 vUV;
+in vec4 vTint;
 out vec4 fragColor;
 
 uniform sampler2D uTex;
 
 void main() {
-    vec4 c = texture(uTex, vUV);
-    if (c.a < 0.05) discard; // clean sprite cutout
+    vec4 c = texture(uTex, vUV) * vTint;
+    if (c.a < 0.05) discard;
     fragColor = c;
 }
 )glsl";
@@ -148,10 +152,13 @@ bool Renderer::init(const char* spriteSheetPath, int sheetCols, int sheetRows) {
     attrib(7, 1, offsetof(Instance, rotation));
     attrib(8, 1, offsetof(Instance, billboard));
     attrib(9, 4, offsetof(Instance, anim));
+    attrib(10, 4, offsetof(Instance, tint));
 
     glBindVertexArray(0);
 
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // A sensible default camera until the world provides one.
     cameras_.push_back(Camera{});

@@ -5,17 +5,20 @@ Builds the WebAssembly target locally and publishes it to Cloudflare Pages (clar
 ## Steps
 
 ```bash
-# 1. Build WASM
-source ~/emsdk/emsdk_env.sh && make build-wasm
+# 1. Build both WASM targets + copy landing page to docs-web/
+source ~/emsdk/emsdk_env.sh && make deploy
 
-# 2. Copy output to tracked folder
-mkdir -p docs-web && cp build/web/* docs-web/
-
-# 3. Commit and push — Cloudflare auto-deploys on push to main
+# 2. Commit and push — Cloudflare auto-deploys on push to main
 git add docs-web/
 git commit -m "Deploy: update WASM build"
 git push origin main
 ```
+
+## What gets deployed
+
+- `docs-web/index.html` — landing page linking to both demos
+- `docs-web/stress.*`   — stress-test demo (900 penguin grid)
+- `docs-web/script.*`   — script-driven demo (walkers, bouncers, idlers)
 
 ## Notes
 
