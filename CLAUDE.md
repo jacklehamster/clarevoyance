@@ -84,8 +84,9 @@ for Clare's father's death. His unchecked ambitions would fracture the kingdom.
 
 ### Camera System
 - Third-person perspective — the player character is always visible on screen
-- Grid-locked movement and rotation, fixed to 90° increments only (no 45° diagonals)
-- Smooth transitions: camera lerps between grid positions and angles, never snaps
+- Camera rotation is locked to 90° increments only (no 45° diagonals)
+- Character/player movement is FREE — not grid-locked; the 90° lock is a camera constraint, not a movement one
+- Smooth transitions: camera lerps between positions and angles, never snaps
 - Dynamic camera shift: large open dungeon rooms may transition to overhead/isometric view
 - The smooth turn system is non-negotiable — do not simplify to instant rotation
 
@@ -276,7 +277,7 @@ The `/push-github` skill documents the full procedure.
 
 - Third-person camera is non-negotiable — Clare must always be visible on screen
 - No minimap under any circumstances
-- Movement and rotation locked to 90° grid increments
+- Camera rotation locked to 90° increments; character/player movement is free (not grid-locked)
 - Shim system must be a 3D world visual effect, not a HUD/UI element
 - Engine and game logic must remain in separate layers
 - Game simulation must remain fully deterministic (required by shim lookahead system)
