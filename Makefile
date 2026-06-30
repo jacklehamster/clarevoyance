@@ -17,6 +17,7 @@ WASM_FLAGS := -std=c++17 -O2 -Isrc/engine -Isrc/game \
               -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=1 \
               --emrun \
               --preload-file art \
+              --preload-file scenes \
               --pre-js web/pre.js
 
 WASM_SCRIPT_FLAGS := -std=c++17 -O2 -Isrc/engine \
@@ -48,7 +49,7 @@ IMGDIFF   := tools/imgdiff
 TEST_FRAMES := 120
 TEST_TIME   := 2.0
 
-.PHONY: all build bundle run demo demo-controls demo-events clean \
+.PHONY: all build bundle run demo demo-controls demo-events demo-menu clean \
         build-wasm run-wasm \
         build-wasm-script run-wasm-script \
         build-script run-script \
@@ -78,6 +79,11 @@ demo-controls: $(BIN)
 # and sends Mochi leaping away.
 demo-events: $(BIN)
 	CV_SCENE=src/levels/demo.json $(BIN)
+
+# Menu demo: Up/Down (or W/S) navigate between two options; selection state
+# is tracked via flags and expressed through sprite animation.
+demo-menu: $(BIN)
+	CV_SCENE=src/levels/menu.json $(BIN)
 
 $(BIN): $(SRC) $(wildcard src/engine/*.h) $(wildcard src/game/*.h)
 	@mkdir -p build

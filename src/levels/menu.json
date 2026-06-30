@@ -1,0 +1,56 @@
+{
+  "sheet": { "path": "art/penguin.png", "cols": 16, "rows": 1 },
+  "cameras": [
+    { "projection": "orthographic", "position": [0, 0, 10], "target": [0, 0, 0], "orthoHalfHeight": 3 }
+  ],
+  "activeCamera": 0,
+  "entities": [
+    { "id": "opt1", "pos": [0, 1.5, 0], "scale": [1.5, 1.5], "billboard": false,
+      "anim": { "first": 0, "count": 1, "fps": 0 } },
+    { "id": "opt2", "pos": [0, 0, 0], "scale": [1.5, 1.5], "billboard": false,
+      "anim": { "first": 2, "count": 1, "fps": 0 } },
+    { "id": "cursor", "pos": [-2.5, 1.5, 0], "scale": [0.8, 0.8], "billboard": false,
+      "anim": { "first": 8, "count": 3, "fps": 8 } }
+  ],
+  "controls": {
+    "bindings": {
+      "up": "menu_up",
+      "down": "menu_down",
+      "w": "menu_up",
+      "s": "menu_down"
+    }
+  },
+  "events": [
+    {
+      "trigger": { "type": "start" },
+      "once": true,
+      "actions": [
+        { "type": "set_flag", "flag": "opt1_selected", "value": true },
+        { "type": "set_anim", "entity": "opt1", "first": 0, "count": 3, "fps": 8 },
+        { "type": "set_anim", "entity": "opt2", "first": 2, "count": 1, "fps": 0 }
+      ]
+    },
+    {
+      "trigger": { "type": "input", "action": "menu_down", "edge": "pressed" },
+      "condition": { "flag": "opt1_selected", "value": true },
+      "once": false,
+      "actions": [
+        { "type": "set_flag", "flag": "opt1_selected", "value": false },
+        { "type": "set_anim", "entity": "opt1", "first": 0, "count": 1, "fps": 0 },
+        { "type": "set_anim", "entity": "opt2", "first": 2, "count": 3, "fps": 8 },
+        { "type": "set_motion", "entity": "cursor", "vel": [0, 0, 0], "accel": [0, 0, 0] }
+      ]
+    },
+    {
+      "trigger": { "type": "input", "action": "menu_up", "edge": "pressed" },
+      "condition": { "flag": "opt1_selected", "value": false },
+      "once": false,
+      "actions": [
+        { "type": "set_flag", "flag": "opt1_selected", "value": true },
+        { "type": "set_anim", "entity": "opt1", "first": 0, "count": 3, "fps": 8 },
+        { "type": "set_anim", "entity": "opt2", "first": 2, "count": 1, "fps": 0 },
+        { "type": "set_motion", "entity": "cursor", "vel": [0, 0, 0], "accel": [0, 0, 0] }
+      ]
+    }
+  ]
+}

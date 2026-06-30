@@ -1,0 +1,40 @@
+name: Build and Deploy WASM
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs-web/**'
+      - '.github/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libglew-dev
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
+      - name: Build stress-test WASM
+        run: make build-wasm
+
+      - name: Build script-demo WASM
+        run: make build-wasm-script
+
+      - name: Deploy to docs-web
+        run: make deploy
+
+      - name: Commit and push docs-web
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs-web/
+          git diff --staged --quiet || (git commit -m "Deploy: update WASM build [skip ci]" && git push)
