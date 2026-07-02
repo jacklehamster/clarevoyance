@@ -11,6 +11,7 @@ void EventSystem::init(const Scene& scene) {
     flags_.clear();
     firstStep_ = true;
     entities_ = scene.initialState.instances;  // working copy for animation swaps
+    attrs_    = scene.attrs;                    // working copy of controlled/speed
 }
 
 bool EventSystem::conditionPasses(const Condition& c) const {
@@ -60,7 +61,22 @@ void EventSystem::runActions(Scene& scene, float now,
                 EntityId id = scene.idOf(a.entity);
                 if (id == 0) break;
                 entities_.erase(id);
+                attrs_.erase(id);
                 out.removals.push_back(id);
+                break;
+            }
+
+            case Action::Type::ToggleControlled: {
+                EntityId id = scene.idOf(a.entity);
+                if (id == 0) break;
+                attrs_[id].controlled = !attrs_[id].controlled;
+                break;
+            }
+
+            case Action::Type::SetControlled: {
+                EntityId id = scene.idOf(a.entity);
+                if (id == 0) break;
+                attrs_[id].controlled = a.value;
                 break;
             }
         }
@@ -70,6 +86,7 @@ void EventSystem::runActions(Scene& scene, float now,
 void EventSystem::update(Scene& scene,
                          float now,
                          const std::unordered_map<EntityId, Vec3>& positions,
+                         const ResolvedActions& actions,
                          Diff& out) {
     const bool isFirstStep = firstStep_;
     firstStep_ = false;
@@ -95,6 +112,21 @@ void EventSystem::update(Scene& scene,
                 float dist2 = dot(d, d);
                 float r = e.trigger.radius;
                 triggered = dist2 <= r * r;
+                break;
+            }
+
+            case Trigger::Type::Input: {
+                // Fire when the named abstract action shows the requested edge
+                // this frame (pressed/released), or is currently held.
+                const std::string& act = e.trigger.action;
+                switch (e.trigger.edge) {
+                    case Trigger::Edge::Pressed:
+                        triggered = actions.pressed.count(act) != 0; break;
+                    case Trigger::Edge::Released:
+                        triggered = actions.released.count(act) != 0; break;
+                    case Trigger::Edge::Held:
+                        triggered = actions.down.count(act) != 0; break;
+                }
                 break;
             }
         }

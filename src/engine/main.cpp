@@ -13,7 +13,9 @@
 #include <SDL.h>
 #include <cmath>
 #include <cstdlib>
+#include <memory>
 #include <string>
+#include <vector>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -23,6 +25,7 @@
 #include "screenshot.h"
 #include "scene.h"
 #include "events.h"
+#include "input.h"
 
 using namespace cv;
 
@@ -108,11 +111,15 @@ struct LoopContext {
     Scene*       scene;
     EventSystem* events;
     std::unordered_map<EntityId, Instance>* entities;  // working copy for sim
+    InputSource* inputSrc;   // pluggable input: keyboard, replay, null (cutscenes)
 };
 
 static void frame(void* arg) {
     LoopContext* ctx = static_cast<LoopContext*>(arg);
 
+    // Collect all SDL events this frame. Engine-level events (quit, camera
+    // toggle) are handled here; the rest are forwarded to the input source.
+    std::vector<SDL_Event> sdlEvents;
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_QUIT) ctx->running = false;
@@ -128,6 +135,7 @@ static void frame(void* arg) {
             int h = event.window.data2;
             ctx->renderer->setViewport(w, h);
         }
+        sdlEvents.push_back(event);
     }
 
     float t = ctx->fixedTime >= 0.0f
@@ -135,15 +143,23 @@ static void frame(void* arg) {
         : (float)(SDL_GetTicks64() - ctx->startTicks) / 1000.0f;
 
     if (ctx->scene) {
-        // Data-driven script layer: advance the sim, evaluate events, apply the
-        // resulting Diff. The camera is fixed by the scene (no orbit).
+        // Data-driven script layer: advance the sim, apply keyboard movement,
+        // evaluate events, apply the resulting Diff. The camera is fixed by the
+        // scene (no orbit). ctx->entities aliases the event system's working copy,
+        // so movement, events and the renderer all see one logical state.
         std::unordered_map<EntityId, Vec3> positions;
         for (const auto& kv : *ctx->entities)
             positions[kv.first] = positionAt(kv.second, t);
 
+        ResolvedActions actions = ctx->inputSrc->poll(sdlEvents);
+
         Diff diff;
-        ctx->events->update(*ctx->scene, t, positions, diff);
-        // Keep our working copy in sync so positions/removals carry forward.
+        // Free movement: applies a velocity to every controlled entity.
+        applyMovement(actions, ctx->events->attrs(), *ctx->entities, t, positions, diff);
+        // Events (including input triggers) run against the resolved actions.
+        ctx->events->update(*ctx->scene, t, positions, actions, diff);
+        // Keep removals in sync (movement/event upserts already write *ctx->entities
+        // since it aliases the event system's working copy).
         for (const auto& up : diff.upserts) (*ctx->entities)[up.first] = up.second;
         for (EntityId id : diff.removals)   ctx->entities->erase(id);
         if (!diff.upserts.empty() || !diff.removals.empty())
@@ -278,6 +294,7 @@ int main(int, char**) {
     Scene*       scene   = nullptr;
     EventSystem* events  = nullptr;
     std::unordered_map<EntityId, Instance>* sceneEntities = nullptr;
+    InputSource* inputSrc = nullptr;  // set after scene is loaded
 
     const char* sheetPath = SHEET_PATH;
     int sheetCols = SHEET_COLS, sheetRows = SHEET_ROWS;
@@ -294,9 +311,9 @@ int main(int, char**) {
         sheetPath = scene->sheet.path.c_str();
         sheetCols = scene->sheet.cols;
         sheetRows = scene->sheet.rows;
-        SDL_Log("Loaded scene '%s': %zu entities, %zu events",
+        SDL_Log("Loaded scene '%s': %zu entities, %zu events, %zu bindings",
                 scenePath.c_str(), scene->initialState.instances.size(),
-                scene->events.size());
+                scene->events.size(), scene->bindings.size());
     }
 
     Renderer renderer;
@@ -314,10 +331,18 @@ int main(int, char**) {
         renderer.applyState(scene->initialState);
         events = new EventSystem();
         events->init(*scene);
-        sceneEntities = new std::unordered_map<EntityId, Instance>(
-            scene->initialState.instances);
+        // Alias the event system's working copy so movement, events and the
+        // renderer all share one logical instance map (no second copy to sync).
+        sceneEntities = &events->entities();
         total = static_cast<int>(scene->initialState.instances.size());
+        // Choose input source: keyboard when bindings are defined, null otherwise.
+        if (!scene->bindings.empty())
+            inputSrc = new KeyboardInputSource(scene->bindings);
+        else
+            inputSrc = new NullInputSource();
     } else {
+        // Stress-test demo has no scene; use a NullInputSource as placeholder.
+        inputSrc = new NullInputSource();
         // --- Stress-test demo: a dense grid of penguins, uploaded once ------
         WorldState state;
         state.cameras     = buildCameras(0.0f);
@@ -355,7 +380,7 @@ int main(int, char**) {
         startTicks, startTicks,
         0, 0, total, true,
         testFrames, fixedTime, doScreenshot, 0, false,
-        scene, events, sceneEntities
+        scene, events, sceneEntities, inputSrc
     };
     // fps=0  → requestAnimationFrame (display-synced, pauses in background) — interactive
     // fps=60 → setTimeout at 60 fps (runs even in hidden tabs)           — test mode
@@ -369,7 +394,7 @@ int main(int, char**) {
         startTicks, startTicks,
         0, 0, total, true,
         testFrames, fixedTime, doScreenshot, 0, false,
-        scene, events, sceneEntities
+        scene, events, sceneEntities, inputSrc
     };
     while (ctx.running) frame(&ctx);
 
@@ -377,7 +402,8 @@ int main(int, char**) {
     SDL_GL_DeleteContext(glCtx);
     SDL_DestroyWindow(window);
     SDL_Quit();
-    delete sceneEntities;
+    // sceneEntities aliases events->entities() — owned by `events`, not freed here.
+    delete inputSrc;
     delete events;
     delete scene;
 #endif

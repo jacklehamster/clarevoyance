@@ -14,15 +14,20 @@
 #include <vector>
 
 #include "world_state.h"
+#include "input.h"
 
 namespace cv {
 
 struct Trigger {
-    enum class Type { Start, Proximity };
+    enum class Type { Start, Proximity, Input };
+    enum class Edge { Pressed, Released, Held };   // input: which edge fires
     Type type = Type::Start;
     std::string entity;     // proximity: the moving entity (by data-file name)
     std::string target;     // proximity: the entity it approaches
     float radius = 1.0f;    // proximity: fire when distance <= radius
+
+    std::string action;     // input: the abstract action name to watch
+    Edge edge = Edge::Pressed;  // input: fire on pressed / released / held
 };
 
 struct Condition {
@@ -32,14 +37,15 @@ struct Condition {
 };
 
 struct Action {
-    enum class Type { Dialogue, SetFlag, SetAnim, SetMotion, Remove };
+    enum class Type { Dialogue, SetFlag, SetAnim, SetMotion, Remove,
+                      ToggleControlled, SetControlled };
     Type type = Type::Dialogue;
 
     std::string id;         // dialogue: line id
     std::string flag;       // set_flag: flag name
-    bool value = true;      // set_flag: value
+    bool value = true;      // set_flag / set_controlled: value
 
-    std::string entity;     // set_anim / set_motion / remove: target entity name
+    std::string entity;     // set_anim / set_motion / remove / *_controlled: target
     int   first = 0;        // set_anim: first frame
     int   count = 1;        // set_anim: frame count
     float fps   = 0.0f;     // set_anim: frames per second
@@ -60,22 +66,42 @@ struct Scene;  // forward decl (scene.h includes this header)
 
 class EventSystem {
 public:
-    // Snapshot the scene's entity instances as the working logical state and
-    // clear all flags. Call once after the scene is loaded.
+    // Snapshot the scene's entity instances and attributes as the working logical
+    // state and clear all flags. Call once after the scene is loaded.
     void init(const Scene& scene);
 
     // Evaluate all events against the given entity positions (keyed by id) at
-    // sim time `now`. Appends upserts/removals to `out` and applies flag/
-    // dialogue side effects. `now` lets set_motion rebase from current position.
+    // sim time `now`, with the abstract input actions resolved this frame.
+    // Appends upserts/removals to `out` and applies flag/dialogue side effects.
+    // `now` lets set_motion rebase from current position. The `input` trigger
+    // reads `actions`; `set_controlled`/`toggle_controlled` mutate the attrs.
     void update(Scene& scene,
                 float now,
                 const std::unordered_map<EntityId, Vec3>& positions,
+                const ResolvedActions& actions,
                 Diff& out);
+
+    // Overload for the events demo (no keyboard) — no input actions are active.
+    void update(Scene& scene,
+                float now,
+                const std::unordered_map<EntityId, Vec3>& positions,
+                Diff& out) {
+        update(scene, now, positions, ResolvedActions{}, out);
+    }
 
     bool flag(const std::string& name) const {
         auto it = flags_.find(name);
         return it != flags_.end() && it->second;
     }
+
+    // The working per-entity attribute store — movement reads it each frame and
+    // the *_controlled actions mutate it. Initialised from the scene in init().
+    std::unordered_map<EntityId, EntityAttrs>&       attrs()       { return attrs_; }
+    const std::unordered_map<EntityId, EntityAttrs>& attrs() const { return attrs_; }
+
+    // The working instance copy — movement rebases velocity on it each frame.
+    std::unordered_map<EntityId, Instance>&       entities()       { return entities_; }
+    const std::unordered_map<EntityId, Instance>& entities() const { return entities_; }
 
 private:
     bool conditionPasses(const Condition& c) const;
@@ -86,6 +112,7 @@ private:
     bool firstStep_ = true;   // Start triggers fire only on the first update
     std::unordered_map<std::string, bool> flags_;
     std::unordered_map<EntityId, Instance> entities_;  // working copy for set_anim
+    std::unordered_map<EntityId, EntityAttrs> attrs_;  // controlled/speed per entity
 };
 
 } // namespace cv

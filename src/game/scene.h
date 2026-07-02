@@ -15,6 +15,7 @@
 
 #include "world_state.h"
 #include "events.h"
+#include "input.h"
 
 namespace cv {
 
@@ -30,6 +31,8 @@ struct Scene {
     WorldState initialState;                 // entities + cameras, ready to upload
     std::vector<Event> events;               // trigger/condition/action rules
     std::unordered_map<std::string, EntityId> nameToId;  // data-file name → id
+    Bindings bindings;                       // key name → abstract action ("controls")
+    std::unordered_map<EntityId, EntityAttrs> attrs;  // per-entity game-side attributes
 
     // Resolve a data-file entity name to its numeric id. Returns 0 if unknown
     // (0 is never assigned to a real entity — ids start at 1).

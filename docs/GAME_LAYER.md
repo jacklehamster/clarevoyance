@@ -208,6 +208,7 @@ no wall-clock, no `rand()` — so they fire deterministically.
 |-------------|---------------------------------|------------|
 | `start`     | —                               | first step (subject to condition) |
 | `proximity` | `entity`, `target`, `radius`    | distance(entity, target) ≤ radius |
+| `input`     | `action`, `edge`                | the abstract `action` shows `edge` this frame (`pressed`/`released`/`held`; default `pressed`) — see Controls / Input |
 
 | Action       | Fields                                  | Effect |
 |--------------|-----------------------------------------|--------|
@@ -216,10 +217,105 @@ no wall-clock, no `rand()` — so they fire deterministically.
 | `set_anim`   | `entity`, `first`, `count`, `fps`       | swaps an entity's animation (emits an upsert `Diff`) |
 | `set_motion` | `entity`, `vel`, `accel`                | rebases motion from the entity's current position and gives it a new velocity/acceleration (e.g. an enemy fleeing or a thrown arc) |
 | `remove`     | `entity`                                | despawns an entity (emits a removal `Diff`) |
+| `toggle_controlled` | `entity`                         | flips the entity's `controlled` attribute (adds/removes it from the controlled set) |
+| `set_controlled`    | `entity`, `value`                | sets the entity's `controlled` attribute to `value` |
 
 `once` (default true) fires the event at most once. Events run from the simulation step and
 produce `Diff`s the renderer applies — they never call GL. This is the same seam the
 clairvoyance lookahead uses, so shim ghosts and scripted events share one deterministic sim.
+
+---
+
+## Controls / Input
+
+Keyboard input is a small, device-agnostic layer (`src/game/input.{h,cpp}`) that sits between
+SDL and the game logic. It has three pieces: an **InputFrame** (raw per-frame key state), the
+**Bindings** (key → abstract action), and the **movement** pass that drives controlled entities.
+The engine wires it up each frame in scene mode; the events demo path is unaffected (no bindings).
+
+**Character/player movement is free — not grid-locked.** The 90° lock is a *camera* constraint
+(see [CLAUDE.md](CLAUDE.md)), not a movement one.
+
+### Abstract action model
+
+The engine never hands SDL keycodes to game logic. Each frame it builds an `InputFrame` of
+lowercase, device-agnostic key names — letters as-is (`"w"`), arrows as `"up"`/`"down"`/
+`"left"`/`"right"`, space as `"space"` — split into three sets: keys currently `down`, keys
+`pressed` this frame, and keys `released` this frame. Bindings then resolve those keys into
+**abstract actions**, so game data talks about intent (`move_north`) rather than hardware.
+
+### Bindings schema
+
+A scene may declare a `controls` block mapping key names to abstract action names:
+
+```json
+"controls": {
+  "bindings": {
+    "w": "move_north", "a": "move_west", "s": "move_south", "d": "move_east",
+    "up": "move_north", "left": "move_west", "down": "move_south", "right": "move_east",
+    "space": "toggle_extra"
+  }
+}
+```
+
+Multiple keys may map to the same action (WASD *and* arrows above). Unbound keys contribute
+nothing. The bindings live on the `Scene`; the engine resolves the `InputFrame` through them
+into down/pressed/released **action** sets each frame.
+
+### Entity attributes: `controlled` and `speed`
+
+Movement is driven by per-entity, game-side attributes — kept separate from the GPU `Instance`
+(which must stay a standard-layout block of floats). They live in an `EntityAttrs` store owned
+by the `EventSystem`, initialised from the scene:
+
+| Field        | Default | Meaning |
+|--------------|---------|---------|
+| `controlled` | `false` | movement input applies to *every* entity whose `controlled` is true |
+| `speed`      | `3.0`   | movement rate in world units / second |
+
+Both are optional entity JSON fields:
+
+```json
+{ "id": "player", "pos": [0, 0.9, 0], "controlled": true, "speed": 3.0, ... }
+```
+
+`controlled` is a per-entity attribute, **not** a global "who is active" flag — you can control
+one entity, several at once, or toggle membership at runtime (via `toggle_controlled` /
+`set_controlled`). This is what lets the controls demo move the player alone, then add a buddy.
+
+### Movement model
+
+The directional actions `move_north` (−Z), `move_south` (+Z), `move_west` (−X), `move_east` (+X)
+follow the engine coordinate convention (+X east, +Z south, +Y up). Held directions sum into a
+world-space vector, normalised if non-zero (so diagonals aren't faster), then scaled by each
+controlled entity's `speed` and applied as **velocity** — using the same rebase-to-current-
+position + `motionStart = now` approach as `set_motion`. An upsert is emitted only when an
+entity's desired velocity actually differs from its current velocity, so a stationary or
+steady-moving entity produces no per-frame `Diff` churn.
+
+### `input` trigger
+
+The `input` trigger fires when an abstract action shows a given edge this frame:
+
+```json
+{ "trigger": { "type": "input", "action": "toggle_extra", "edge": "pressed" }, "once": false,
+  "actions": [ { "type": "toggle_controlled", "entity": "buddy" } ] }
+```
+
+`edge` is one of `pressed` / `released` / `held` (default `pressed`). The resolved action sets
+are threaded into `EventSystem::update`; the no-input overload (used by the events demo) simply
+passes empty action sets.
+
+### Demo
+
+```bash
+make demo-controls   # src/levels/controls.json
+make demo-events     # src/levels/demo.json (the proximity/dialogue demo)
+```
+
+In `demo-controls`, WASD or the arrow keys move the player penguin freely. Pressing **space**
+fires an `input` trigger that toggles a second "buddy" penguin into the controlled set, so both
+move together; pressing space again drops the buddy back out.
 
 ---
 
@@ -247,8 +343,8 @@ Follows the engine's right-handed coordinate system:
 
 - **+X** east, **+Z** south, **+Y** up
 - Grid cells are 1×1 world units
-- Player movement snaps to grid; camera lerps smoothly between positions
-- Rotation locked to 90° increments (0°, 90°, 180°, 270°)
+- Character/player movement is free (not grid-locked); camera lerps smoothly between positions
+- Camera rotation is locked to 90° increments (0°, 90°, 180°, 270°)
 
 ---
 
