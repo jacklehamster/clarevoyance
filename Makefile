@@ -9,7 +9,7 @@ GL_FLAGS := -lGL -lGLEW
 endif
 
 # Emscripten — invoked via subshell so emsdk_env.sh is sourced per call.
-EMSDK_ENV := source $(HOME)/emsdk/emsdk_env.sh 2>/dev/null
+EMSDK_ENV := source $(HOME)/emsdk/emsdk_env.sh 2>/dev/null || true
 WASM_OUT  := build/web
 WASM_FLAGS := -std=c++17 -O2 -Isrc/engine -Isrc/game \
               -sUSE_SDL=2 -sUSE_WEBGL2=1 -sFULL_ES3=1 \
