@@ -2,16 +2,33 @@ name: Build and Deploy WASM
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'claude/**'
     paths-ignore:
       - 'docs-web/**'
-      - '.github/**'
 
 permissions:
   contents: write
 
+concurrency:
+  group: wasm-deploy
+  cancel-in-progress: true
+
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libglew-dev clang
+
+      - name: Desktop compile gate
+        run: make build
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,17 +41,19 @@ jobs:
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: latest
+          version: 3.1.61
 
       - name: Build stress-test WASM
         run: make build-wasm
 
       - name: Deploy to docs-web
+        if: github.ref == 'refs/heads/main'
         run: make deploy
 
       - name: Commit and push docs-web
+        if: github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs-web/
-          git diff --staged --quiet || (git commit -m "Deploy: update WASM build [skip ci]" && git push)
+          git diff --staged --quiet || (git commit -m "Deploy: update WASM build [skip ci]" && git pull --rebase origin main && git push)
