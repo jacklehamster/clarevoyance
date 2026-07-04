@@ -46,14 +46,23 @@ jobs:
       - name: Build stress-test WASM
         run: make build-wasm
 
-      - name: Deploy to docs-web
+      - name: Deploy (wrangler direct upload, docs-web commit as fallback)
         if: github.ref == 'refs/heads/main'
-        run: make deploy
-
-      - name: Commit and push docs-web
-        if: github.ref == 'refs/heads/main'
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 1fe1ef92444f52ef8d7ff09c175d034e
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs-web/
-          git diff --staged --quiet || (git commit -m "Deploy: update WASM build [skip ci]" && git pull --rebase origin main && git push)
+          # Stage the landing page as the site root for both deploy paths.
+          cp web/landing.html build/web/index.html
+          if [ -n "$CF_TOKEN" ]; then
+            echo "CLOUDFLARE_API_TOKEN present — deploying build/web via wrangler"
+            npx wrangler pages deploy build/web --project-name=clarevoyance --branch=main
+          else
+            echo "CLOUDFLARE_API_TOKEN not set — falling back to docs-web commit"
+            make deploy
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add docs-web/
+            git diff --staged --quiet || (git commit -m "Deploy: update WASM build [skip ci]" && git pull --rebase origin main && git push)
+          fi
