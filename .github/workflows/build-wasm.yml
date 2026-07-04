@@ -29,9 +29,6 @@ jobs:
       - name: Build stress-test WASM
         run: make build-wasm
 
-      - name: Build script-demo WASM
-        run: make build-wasm-script
-
       - name: Deploy to docs-web
         run: make deploy
 

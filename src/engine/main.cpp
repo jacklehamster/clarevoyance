@@ -17,6 +17,10 @@
 #include <string>
 #include <vector>
 
+#if !defined(__EMSCRIPTEN__)
+#include <sys/stat.h>
+#endif
+
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -112,7 +116,49 @@ struct LoopContext {
     EventSystem* events;
     std::unordered_map<EntityId, Instance>* entities;  // working copy for sim
     InputSource* inputSrc;   // pluggable input: keyboard, replay, null (cutscenes)
+    // hot-reload (desktop scene mode only): re-load the scene file when its
+    // mtime changes, checked once per second
+    std::string scenePath;
+    time_t      sceneMtime     = 0;
+    Uint64      lastReloadCheck = 0;
 };
+
+#if !defined(__EMSCRIPTEN__)
+// Once per second, stat() the scene file; if it changed on disk, re-load it and
+// reset the world (renderer state, event system, input source). Desktop only —
+// there is no file watching on the web (files live in the preloaded FS).
+static void maybeHotReloadScene(LoopContext* ctx) {
+    if (!ctx->scene || ctx->scenePath.empty()) return;
+
+    Uint64 now = SDL_GetTicks64();
+    if (now - ctx->lastReloadCheck < 1000) return;
+    ctx->lastReloadCheck = now;
+
+    struct stat st{};
+    if (stat(ctx->scenePath.c_str(), &st) != 0) return;
+    if (st.st_mtime == ctx->sceneMtime) return;
+    ctx->sceneMtime = st.st_mtime;
+
+    Scene fresh;
+    std::string err;
+    if (!loadScene(ctx->scenePath.c_str(), fresh, err)) {
+        SDL_Log("Scene hot-reload failed (%s): %s — keeping current scene",
+                ctx->scenePath.c_str(), err.c_str());
+        return;
+    }
+
+    *ctx->scene = std::move(fresh);
+    ctx->renderer->applyState(ctx->scene->initialState);
+    ctx->events->init(*ctx->scene);
+    // ctx->entities aliases the event system's working copy — same map object,
+    // freshly refilled by init(), so the pointer stays valid.
+    delete ctx->inputSrc;
+    ctx->inputSrc = ctx->scene->bindings.empty()
+        ? static_cast<InputSource*>(new NullInputSource())
+        : new KeyboardInputSource(ctx->scene->bindings);
+    SDL_Log("Scene hot-reloaded: %s", ctx->scenePath.c_str());
+}
+#endif
 
 static void frame(void* arg) {
     LoopContext* ctx = static_cast<LoopContext*>(arg);
@@ -141,6 +187,10 @@ static void frame(void* arg) {
     float t = ctx->fixedTime >= 0.0f
         ? ctx->fixedTime
         : (float)(SDL_GetTicks64() - ctx->startTicks) / 1000.0f;
+
+#if !defined(__EMSCRIPTEN__)
+    maybeHotReloadScene(ctx);
+#endif
 
     if (ctx->scene) {
         // Data-driven script layer: advance the sim, apply keyboard movement,
@@ -380,7 +430,8 @@ int main(int, char**) {
         startTicks, startTicks,
         0, 0, total, true,
         testFrames, fixedTime, doScreenshot, 0, false,
-        scene, events, sceneEntities, inputSrc
+        scene, events, sceneEntities, inputSrc,
+        {}, 0, 0
     };
     // fps=0  → requestAnimationFrame (display-synced, pauses in background) — interactive
     // fps=60 → setTimeout at 60 fps (runs even in hidden tabs)           — test mode
@@ -394,8 +445,14 @@ int main(int, char**) {
         startTicks, startTicks,
         0, 0, total, true,
         testFrames, fixedTime, doScreenshot, 0, false,
-        scene, events, sceneEntities, inputSrc
+        scene, events, sceneEntities, inputSrc,
+        {}, 0, 0
     };
+    if (scene) {
+        ctx.scenePath = scenePath;
+        struct stat st{};
+        if (stat(scenePath.c_str(), &st) == 0) ctx.sceneMtime = st.st_mtime;
+    }
     while (ctx.running) frame(&ctx);
 
     renderer.shutdown();
@@ -403,7 +460,7 @@ int main(int, char**) {
     SDL_DestroyWindow(window);
     SDL_Quit();
     // sceneEntities aliases events->entities() — owned by `events`, not freed here.
-    delete inputSrc;
+    delete ctx.inputSrc;  // via ctx: hot-reload may have replaced the input source
     delete events;
     delete scene;
 #endif
