@@ -133,7 +133,7 @@ test-wasm: build-wasm
 	@mkdir -p $(TEST_DIR)
 	@echo "--- Web test ($(TEST_FRAMES) frames, t=$(TEST_TIME)) ---"
 	bash -c '$(EMSDK_ENV) && emrun --kill-exit --timeout 30 \
-	    "$(WASM_OUT)/index.html?CV_TEST_FRAMES=$(TEST_FRAMES)&CV_FIXED_TIME=$(TEST_TIME)&CV_SCREENSHOT=1" \
+	    "$(WASM_OUT)/stress.html?CV_TEST_FRAMES=$(TEST_FRAMES)&CV_FIXED_TIME=$(TEST_TIME)&CV_SCREENSHOT=1" \
 	    2>&1 | tee $(TEST_DIR)/web.log'
 	@if grep -q "CV_GLERROR" $(TEST_DIR)/web.log; then \
 	    echo "FAIL: GL errors detected (web)"; exit 1; fi
