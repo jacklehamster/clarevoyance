@@ -259,6 +259,25 @@ The `/push-github` skill documents the full procedure.
 
 ---
 
+## Agent Working Style — Be Proactive
+
+Agents working on this repo should drive tasks to completion without waiting to be asked:
+
+- **Finish the loop.** After pushing, verify CI (`Build and Deploy WASM` workflow) actually
+  succeeds. If it fails, read the logs, fix, and push again — don't report a failure and stop.
+- **Deploys must land.** A change isn't done until it's visible at https://clare.dobuki.net
+  (the GitHub Action builds WASM → commits `docs-web/` → Cloudflare auto-deploys).
+- **Fix small blockers autonomously** (build errors, missing files, path issues, CI config).
+  Only stop to ask when the decision is architectural, destructive, or changes scope.
+- **Keep demos isolated** — one demo per layer/feature (`make demo-events`, `demo-controls`,
+  `demo-menu`, stress test). When adding a layer, add its demo and a card in `web/landing.html`.
+- **Sync scenes in both places**: desktop scenes live in `src/levels/`, web-preloaded copies
+  in `scenes/`. Keep them identical when editing either.
+- **Verify before claiming done**: run `make build` (and `make test` when relevant) before
+  every push.
+
+---
+
 ## Coding Conventions
 
 *(To be expanded as patterns emerge — add decisions here as they're made)*
