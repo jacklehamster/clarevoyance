@@ -63,7 +63,12 @@ how transitions happen, and what state survives a swap.
     on scene activation. All `motionStart` / `animStart` values in a scene are relative
     to that epoch, so scene files are position-independent in time.
 13. **MUST NOT** carry wall-clock time into the sim; the fixed-timestep sim (see
-    SHIM_SYSTEM spec) is the only time source the coordinator advances.
+    SHIM_SYSTEM spec) is the only time source the coordinator advances. The fixed tick
+    is **60 Hz (owner decision)**.
+13b. **Networked play IS planned (owner decision):** the coordinator advances the sim
+    exclusively by feeding it tick-stamped input commands (lockstep-friendly,
+    input-delay design — see SHIM_SYSTEM req 3b). Scene swaps are themselves
+    tick-stamped commands so all peers swap on the same tick.
 
 ### Transitions
 

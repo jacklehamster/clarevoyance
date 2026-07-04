@@ -101,7 +101,7 @@ for Clare's father's death. His unchecked ambitions would fracture the kingdom.
 **Dungeons:**
 - More complex layouts than outdoors
 - Third-person maintained throughout
-- Large open rooms may trigger overhead camera (exact trigger TBD — automatic or manual)
+- Large open rooms trigger the overhead camera automatically based on room size, with a manual player override
 
 ### Rendering Philosophy
 - Sprite-heavy: characters, enemies, and NPCs are billboard sprites in a 3D world
@@ -156,7 +156,8 @@ for Clare's father's death. His unchecked ambitions would fracture the kingdom.
   STORY.md          — full narrative, character arcs, boss designs, themes
   ARCHITECTURE.md   — engine layer: renderer contract, Instance/WorldState/Diff/Camera API
   GAME_LAYER.md     — game layer: combat, AI, clairvoyance system, event format, world structure
-  CLAUDE.md         — this file
+  /specs            — requirements specs (scene coordinator, world building, map editor, shims)
+CLAUDE.md           — this file (repo root)
 ```
 
 ---
@@ -308,7 +309,21 @@ Agents working on this repo should drive tasks to completion without waiting to 
 
 ## Current Status
 
-Pre-production — no code written yet.
+The engine core and a data-driven script layer are implemented and live at
+https://clare.dobuki.net (landing page with demo cards).
 
-**First session goal:** Minimal C++ project with SDL2 and OpenGL that renders a
-billboarded sprite with frame animation handled entirely in the shader.
+**What exists:**
+- Renderer: single-draw-call instanced billboard sprites, motion + frame animation
+  evaluated entirely on the GPU from `uTime` (see `docs/ARCHITECTURE.md`)
+- Per-instance `tint` (RGBA multiplier) — the rendering hook for translucent shims
+- Data-driven scenes (`src/levels/*.json`): entities, cameras, events
+  (trigger/condition/action), key bindings, free player movement
+- Scene hot-reload on desktop: edit the JSON while `make demo` runs and it reloads
+- Cross-platform: desktop (OpenGL 3.3 Core) and browser (WebGL 2) with pixel-identical
+  output verified by `make test-parity`
+
+**Make targets:** `build`, `run`, `demo` (SCENE=…), `demo-events`, `demo-controls`,
+`demo-menu`, `build-wasm`, `run-wasm`, `deploy`, `test`, `test-wasm`, `test-parity`, `clean`.
+
+**Next up:** see `docs/specs/` — scene coordinator, world building (textured grid quads),
+in-engine map editor, and the shim lookahead system (60 Hz fixed tick, lockstep-friendly).

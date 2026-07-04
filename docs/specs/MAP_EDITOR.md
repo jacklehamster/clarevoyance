@@ -99,11 +99,11 @@ raw frame numbers.
 
 ## Open questions
 
-- **Delivery form:** in-engine editor mode (reuses the real renderer, but adds UI to a
-  UI-less engine) vs. external web tool (easy UI, but must reimplement or embed the
-  WASM renderer for preview). Undecided.
-- Where does the strict loader live so both the C++ engine and a possibly-JS editor
-  share it? (Candidate: C++ loader compiled to WASM and reused by the web tool.)
+- ~~**Delivery form:**~~ **Decided (owner): in-engine edit mode.** The editor is a mode
+  of the engine itself — it reuses the real renderer, camera, and strict loader
+  directly, so preview fidelity and loader sharing are solved by construction.
+- ~~Where does the strict loader live?~~ Resolved by the in-engine decision: the C++
+  loader is the only loader; the editor calls it in-process.
 - Schema evolution policy: strict rejection of newer minor versions, or
   forward-compatible ignore-with-warning?
 

@@ -25,15 +25,21 @@ preview *feels*.
 ### Deterministic fixed-timestep simulation (prerequisite)
 
 1. **MUST** move the simulation to a fixed timestep before any shim work: integer tick
-   counter, `double` sim time derived as `tick * dt`, fixed `dt` (e.g. 1/60 s).
-   Rendering interpolates between sim states via the existing analytic motion model
-   (`pos + vel*t + ½*accel*t²`) — the GPU already does this; the sim must match it.
+   counter, `double` sim time derived as `tick * dt`, fixed `dt` = **1/60 s (60 Hz —
+   decided by the owner)**. Rendering interpolates between sim states via the existing
+   analytic motion model (`pos + vel*t + ½*accel*t²`) — the GPU already does this; the
+   sim must match it.
 2. **Blocker (ground truth):** sim time is currently wall-clock per frame; proximity
    and event triggers are frame-rate dependent. This **MUST** be fixed — same input
    sequence must produce the same trigger firings at any frame rate, on desktop, WASM,
    and Switch.
 3. **MUST** use seeded RNG only, with every seed recorded; no `rand()`, no wall-clock
    reads inside the sim (already policy — see ARCHITECTURE.md Determinism).
+3b. **Networked play IS planned (owner decision).** All inputs **MUST** enter the sim
+   as tick-stamped commands (input at tick T applies at tick T), so the same command
+   stream replays identically anywhere. The design **MUST** stay lockstep-friendly
+   with input delay: a peer's commands for tick T can arrive up to the delay window
+   late and still be applied deterministically.
 
 ### Sim state must be forkable (prerequisite)
 
@@ -105,7 +111,8 @@ preview *feels*.
 ## Non-goals
 
 - Long-range narrative visions (cutscene territory, not this system).
-- Predicting other *players* (single-player game).
+- Predicting other *players* — networked play is planned (see req 3b), but shims
+  preview enemy attacks only.
 - Full-fidelity AI in the fork — the lookahead only needs attack-phase accuracy.
 - Shim interaction (shims are read-only previews; Clare dodges, she doesn't touch them).
 

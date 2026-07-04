@@ -23,7 +23,9 @@ the existing instanced sprite path wherever possible.
 ### Geometry: floors and walls
 
 1. **MUST** support floor quads (lying flat in the XZ plane) and wall quads (vertical,
-   facing an arbitrary yaw).
+   facing an arbitrary yaw). **Decided (owner): v1 environment geometry is textured
+   grid quads only** — no meshes, heightmaps, or slopes; anything beyond flat textured
+   quads on the grid is out of scope for v1.
 2. **Blocker — orientation:** `Instance.rotation` is yaw-only; a quad cannot pitch to
    lie flat, so floor tiles are impossible today. The engine **MUST** gain either a
    pitch/orientation field on `Instance` (preferred; per the doc-sync rule,
@@ -97,10 +99,13 @@ the existing instanced sprite path wherever possible.
 
 ## Non-goals
 
-- Full 3D meshes, heightmaps, or slopes — flat floors and vertical walls only for now.
+- Full 3D meshes, heightmaps, or slopes — flat textured grid quads only for v1
+  (owner decision).
 - Lighting/shadows.
-- Dungeon overhead-camera trigger design (camera behavior; separate discussion — the
-  tile layer only needs to tag "large open room" regions).
+- Dungeon overhead-camera trigger implementation (camera behavior lives in the engine
+  camera system — the tile layer only needs to tag "large open room" regions).
+  **Decided (owner): the overhead camera engages automatically based on room size,
+  with a manual player override.**
 - The map editor itself (MAP_EDITOR spec).
 
 ---

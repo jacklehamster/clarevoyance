@@ -40,6 +40,9 @@ struct Instance {
     float billboard;    // 1 = always face camera
 
     Vec4  anim;         // firstFrame, frameCount, fps, animStart
+
+    Vec4  tint;         // RGBA multiplier applied in the fragment shader
+                        // (1,1,1,1 = opaque unmodified; alpha < 1 = translucent shim)
 };
 ```
 
@@ -153,7 +156,7 @@ The shim system — ghost previews of future entity positions — maps cleanly o
 
 1. The CPU runs a lightweight lookahead simulation N seconds ahead (positions + AABB collision, no rendering).
 2. Shim instances are added to the scene with the *future* position encoded as `pos` and `motionStart = now + lookahead`.
-3. They are rendered with a translucent tint (future: a `tint` field on Instance, or a second draw pass).
+3. They are rendered with a translucent tint via the `tint` field on Instance (implemented — per-instance GPU attribute at location 10, multiplied in the fragment shader).
 
 Because the simulation is deterministic (same inputs → same outputs, seeded RNG only), the lookahead produces stable, flicker-free shims. The GPU evaluates them using the exact same motion formula as live sprites.
 
@@ -183,11 +186,21 @@ src/engine/
   instance.h        — Instance POD + makeBillboard/makeSprite/setAnimation/setMotion
   world_state.h     — WorldState, Diff, EntityId
   renderer.h/.cpp   — Renderer: owns VAO/VBOs/program/texture, applyState/applyDiff/render
-  main.cpp          — stress-test demo (penguin sprite sheet, orbiting camera)
+  main.cpp          — entry point: stress-test demo, or a data-driven scene via
+                      CV_SCENE=path (with once-per-second hot-reload on desktop)
   screenshot.h/.cpp — captureFramebufferBase64, framebufferNonBlank (test helpers)
   third_party/
     stb_image.h       — vendored v2.30
     stb_image_write.h — vendored (used by screenshot.cpp for PNG encoding)
+
+src/game/
+  json.h            — minimal JSON parser for scene files (no external deps)
+  scene.h/.cpp      — Scene: entities/cameras/events/bindings parsed from JSON, loadScene()
+  events.h/.cpp     — EventSystem: data-driven trigger/condition/action rules → Diff
+  input.h/.cpp      — InputFrame/Bindings/ResolvedActions, free movement, InputSource
+
+src/levels/
+  *.json            — canonical scene files (demo, controls, menu)
 
 tools/
   imgdiff.c         — native pixel-diff tool for desktop/web parity checks
@@ -259,7 +272,9 @@ The browser owns the event loop; WASM cannot block. The loop body lives in a `fr
 - `-sUSE_SDL=2 -sUSE_WEBGL2=1 -sFULL_ES3=1` — Emscripten SDL2 port + WebGL 2 mapping.
 - `-sEXIT_RUNTIME=1` — allows `exit()` / atexit handlers to work in WASM.
 - `--emrun` — compiles in stdout forwarding to the emrun HTTP server (required for `exit()` to signal `emrun`; incompatible with `EXIT_RUNTIME=0`).
-- `--preload-file art` — packages `art/` into `index.data`; virtual path `art/penguin.png` is identical to desktop, so no path changes in engine code.
+- `--preload-file art` — packages `art/` into `stress.data`; virtual path `art/penguin.png` is identical to desktop, so no path changes in engine code.
+- `--preload-file src/levels@scenes` — maps the canonical scene directory into the virtual FS as `scenes/`, so web URLs use `scenes/...` paths.
+- Outputs are `build/web/stress.{html,js,wasm,data}`.
 
 ---
 
@@ -293,7 +308,7 @@ Current baseline: **0.00/255 mean diff, 0.0% pixels differ** — desktop (OpenGL
 
 ### emrun integration
 
-`emrun --kill-exit --timeout 30 "index.html?..."` launches Chrome, captures stdout via HTTP POST (the `--emrun`-compiled binary POSTs each line), and terminates when the WASM calls `exit(0)`. `--kill-exit` closes the browser process; `--timeout 30` kills everything if the test hangs.
+`emrun --kill-exit --timeout 30 "stress.html?..."` launches Chrome, captures stdout via HTTP POST (the `--emrun`-compiled binary POSTs each line), and terminates when the WASM calls `exit(0)`. `--kill-exit` closes the browser process; `--timeout 30` kills everything if the test hangs.
 
 ### one-shot guard
 
@@ -307,7 +322,7 @@ These are non-negotiable — see [CLAUDE.md](../CLAUDE.md) for full rationale.
 
 - Third-person camera; Clare always visible on screen.
 - No minimap.
-- Movement and rotation locked to 90° grid increments.
+- Camera rotation locked to 90° increments; character/player movement is free (not grid-locked).
 - Shim system is a 3D world effect, not a HUD element.
 - Shader-based frame animation — animation state never moves to CPU.
 - Game simulation must remain fully deterministic.
