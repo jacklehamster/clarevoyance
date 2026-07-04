@@ -6,6 +6,17 @@ The game layer builds `Diff`s and hands them to the renderer — it never calls 
 
 ---
 
+## Roadmap specs
+
+Requirements documents for the next major systems live in `docs/specs/`:
+
+- [SCENE_COORDINATOR.md](specs/SCENE_COORDINATOR.md) — runtime scene switching, `change_scene` + spawn points, persistent GameState vs scene-local state.
+- [WORLD_BUILDING.md](specs/WORLD_BUILDING.md) — floor/wall tile layer, spatial tile cache, roads with forks, collision, landmark navigation.
+- [MAP_EDITOR.md](specs/MAP_EDITOR.md) — strict versioned scene schema, JSON round-trip serializer, archetypes and named clips, editor tooling.
+- [SHIM_SYSTEM.md](specs/SHIM_SYSTEM.md) — fixed-timestep deterministic sim, lookahead fork, translucent shim render pass, upgrade tiers, corruption effects.
+
+---
+
 ## Responsibilities
 
 | Layer | Owns |
