@@ -17,7 +17,7 @@ WASM_FLAGS := -std=c++17 -O2 -Isrc/engine -Isrc/game \
               -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=1 \
               --emrun \
               --preload-file art \
-              --preload-file scenes \
+              --preload-file src/levels@scenes \
               --pre-js web/pre.js
 
 SRC      := $(wildcard src/engine/*.cpp) $(wildcard src/game/*.cpp)

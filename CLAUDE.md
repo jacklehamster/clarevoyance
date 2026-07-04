@@ -271,8 +271,9 @@ Agents working on this repo should drive tasks to completion without waiting to 
   Only stop to ask when the decision is architectural, destructive, or changes scope.
 - **Keep demos isolated** — one demo per layer/feature (`make demo-events`, `demo-controls`,
   `demo-menu`, stress test). When adding a layer, add its demo and a card in `web/landing.html`.
-- **Sync scenes in both places**: desktop scenes live in `src/levels/`, web-preloaded copies
-  in `scenes/`. Keep them identical when editing either.
+- **Scenes live ONLY in `src/levels/`** — the WASM build maps them into the virtual FS as
+  `scenes/` via `--preload-file src/levels@scenes`, so web URLs keep using `scenes/...` paths.
+  There is no separate `scenes/` directory to sync.
 - **Verify before claiming done**: run `make build` (and `make test` when relevant) before
   every push.
 
