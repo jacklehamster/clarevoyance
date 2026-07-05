@@ -135,16 +135,117 @@ void test_events() {
     {
         Scene s = buildScene({9, 0, 0});
         Event e = proximityEvent(1.5f, setFlag("done"));
-        e.condition.present = true;
-        e.condition.flag    = "gate";
-        e.condition.value   = true;
+        e.condition.kind  = Condition::Kind::Flag;
+        e.condition.flag  = "gate";
+        e.condition.value = 1.0;              // i.e. "value": true
         s.events.push_back(e);
         SimState st = makeSimState(s);
         stepIdle(s, st);
         CHECK(st.flags.count("done") == 0);   // gate is false → no fire
-        st.flags["gate"] = true;
+        st.flags["gate"] = 1.0;
         stepIdle(s, st);
         CHECK(st.flags.count("done") == 1);   // gate open → fires
+    }
+
+    // --- add_flag: counters increment from an implicit 0 ----------------------
+    {
+        Scene s = buildScene({9, 0, 0});
+        Action add;
+        add.type  = Action::Type::AddFlag;
+        add.flag  = "keys";
+        add.value = 1.0;
+        s.events.push_back(proximityEvent(1.5f, add, /*once=*/false));
+        SimState st = makeSimState(s);
+        stepIdle(s, st);
+        CHECK(st.flags["keys"] == 1.0);       // missing flag started at 0
+        stepIdle(s, st);
+        stepIdle(s, st);
+        CHECK(st.flags["keys"] == 3.0);       // refires each tick, accumulates
+    }
+
+    // --- Comparison ops: lt/le/gt/ge/ne against a numeric flag ---------------
+    {
+        auto opGate = [](Condition::Op op, double value, double flagVal) {
+            Scene s = buildScene({9, 0, 0});
+            Event e = proximityEvent(1.5f, setFlag("pass"));
+            e.condition.kind  = Condition::Kind::Flag;
+            e.condition.flag  = "keys";
+            e.condition.op    = op;
+            e.condition.value = value;
+            s.events.push_back(e);
+            SimState st = makeSimState(s);
+            st.flags["keys"] = flagVal;
+            Diff diff;
+            stepSim(s, st, ResolvedActions{}, diff);
+            return st.flags.count("pass") == 1;
+        };
+        CHECK( opGate(Condition::Op::Eq, 3, 3));
+        CHECK(!opGate(Condition::Op::Eq, 3, 2));
+        CHECK( opGate(Condition::Op::Ne, 3, 2));
+        CHECK(!opGate(Condition::Op::Ne, 3, 3));
+        CHECK( opGate(Condition::Op::Lt, 3, 2));
+        CHECK(!opGate(Condition::Op::Lt, 3, 3));
+        CHECK( opGate(Condition::Op::Le, 3, 3));
+        CHECK(!opGate(Condition::Op::Le, 3, 4));
+        CHECK( opGate(Condition::Op::Gt, 3, 4));
+        CHECK(!opGate(Condition::Op::Gt, 3, 3));
+        CHECK( opGate(Condition::Op::Ge, 3, 3));
+        CHECK(!opGate(Condition::Op::Ge, 3, 2));
+    }
+
+    // --- all/any composition, nested ------------------------------------------
+    {
+        // all[ a==1, any[ b==1, c>=2 ] ]
+        auto build = [](double a, double b, double c) {
+            Scene s = buildScene({9, 0, 0});
+            Event e = proximityEvent(1.5f, setFlag("pass"));
+
+            Condition condA;
+            condA.kind = Condition::Kind::Flag;
+            condA.flag = "a"; condA.value = 1.0;
+
+            Condition condB;
+            condB.kind = Condition::Kind::Flag;
+            condB.flag = "b"; condB.value = 1.0;
+
+            Condition condC;
+            condC.kind = Condition::Kind::Flag;
+            condC.flag = "c"; condC.op = Condition::Op::Ge; condC.value = 2.0;
+
+            Condition anyBC;
+            anyBC.kind = Condition::Kind::Any;
+            anyBC.children.push_back(condB);
+            anyBC.children.push_back(condC);
+
+            e.condition.kind = Condition::Kind::All;
+            e.condition.children.push_back(condA);
+            e.condition.children.push_back(anyBC);
+            s.events.push_back(e);
+
+            SimState st = makeSimState(s);
+            st.flags["a"] = a; st.flags["b"] = b; st.flags["c"] = c;
+            Diff diff;
+            stepSim(s, st, ResolvedActions{}, diff);
+            return st.flags.count("pass") == 1;
+        };
+        CHECK( build(1, 1, 0));   // a && b
+        CHECK( build(1, 0, 2));   // a && c>=2
+        CHECK(!build(0, 1, 2));   // !a fails the all
+        CHECK(!build(1, 0, 1));   // neither any-branch holds
+        // Empty all passes; empty any fails (identity elements of AND / OR).
+        {
+            Scene s = buildScene({9, 0, 0});
+            Event e1 = proximityEvent(1.5f, setFlag("all_ok"));
+            e1.condition.kind = Condition::Kind::All;
+            Event e2 = proximityEvent(1.5f, setFlag("any_ok"));
+            e2.condition.kind = Condition::Kind::Any;
+            s.events.push_back(e1);
+            s.events.push_back(e2);
+            SimState st = makeSimState(s);
+            stepIdle(s, st);
+            CHECK(st.flags.count("all_ok") == 1);
+            CHECK(st.flags.count("any_ok") == 0);
+        }
     }
 
     // --- Input trigger: pressed fires once, held-only ticks do not refire ----

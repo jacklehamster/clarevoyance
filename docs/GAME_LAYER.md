@@ -239,10 +239,32 @@ no wall-clock, no `rand()` — so they fire deterministically.
 | `proximity` | `entity`, `target`, `radius`    | distance(entity, target) ≤ radius |
 | `input`     | `action`, `edge`                | the abstract `action` shows `edge` this tick (`pressed`/`released`/`held`; default `pressed`) — see Controls / Input |
 
+### Flags and conditions
+
+Flags are **numeric** (`double`): booleans are just 0/1 — `"value": true` in data is
+1.0 — and the same store holds counters (`keys`, `score`). A flag that was never set
+reads as 0 (false). A condition is either a single flag comparison or an `all`/`any`
+composition (recursive to any depth):
+
+```json
+"condition": { "all": [
+  { "flag": "keys", "op": "ge", "value": 3 },
+  { "any": [ { "flag": "door_open", "value": true },
+             { "flag": "lives", "op": "ne", "value": 0 } ] }
+] }
+```
+
+| Condition form | Fields | Passes when |
+|----------------|--------|-------------|
+| flag comparison | `flag`, `value`, `op` (optional) | `flags[flag] <op> value`; `op` is one of `eq` (default), `ne`, `lt`, `le`, `gt`, `ge` |
+| `all` | array of conditions | every child passes (empty `all` passes) |
+| `any` | array of conditions | at least one child passes (empty `any` fails) |
+
 | Action       | Fields                                  | Effect |
 |--------------|-----------------------------------------|--------|
 | `dialogue`   | `id`                                    | emits a `CV_DIALOGUE: <id>` line (UI sink TBD) |
-| `set_flag`   | `flag`, `value`                         | sets a boolean flag |
+| `set_flag`   | `flag`, `value`                         | sets a flag (boolean or number) |
+| `add_flag`   | `flag`, `value`                         | adds `value` to a flag (counters — a missing flag starts at 0) |
 | `set_anim`   | `entity`, `first`, `count`, `fps`       | swaps an entity's animation (emits an upsert `Diff`) |
 | `set_motion` | `entity`, `vel`, `accel`                | rebases motion from the entity's current position and gives it a new velocity/acceleration (e.g. an enemy fleeing or a thrown arc) |
 | `remove`     | `entity`                                | despawns an entity (emits a removal `Diff`) |

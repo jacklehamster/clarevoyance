@@ -88,9 +88,63 @@ static void test_scene_orientation() {
     CHECK(scene.initialState.instances[scene.idOf("sprite")].pitch == 0.0f);
 }
 
+// Condition parsing: comparison ops, all/any composition, and numeric/boolean
+// values for set_flag / add_flag.
+static void test_scene_conditions() {
+    Scene scene;
+    std::string err;
+    bool ok = loadFromString(R"({
+        "entities": [ { "id": "a", "pos": [0, 0, 0] } ],
+        "events": [
+            {
+                "trigger": { "type": "start" },
+                "condition": { "all": [
+                    { "flag": "keys", "op": "ge", "value": 3 },
+                    { "any": [
+                        { "flag": "door_open", "value": true },
+                        { "flag": "lives", "op": "ne", "value": 0 }
+                    ] }
+                ] },
+                "actions": [
+                    { "type": "add_flag", "flag": "keys", "value": 1 },
+                    { "type": "set_flag", "flag": "score", "value": 250 },
+                    { "type": "set_flag", "flag": "seen", "value": true }
+                ]
+            }
+        ]
+    })", scene, err);
+    CHECK_MSG(ok, err.c_str());
+    CHECK(scene.events.size() == 1);
+    if (scene.events.size() != 1) return;
+    const Condition& c = scene.events[0].condition;
+    CHECK(c.kind == Condition::Kind::All && c.children.size() == 2);
+    if (c.children.size() == 2) {
+        CHECK(c.children[0].kind == Condition::Kind::Flag);
+        CHECK(c.children[0].flag == "keys");
+        CHECK(c.children[0].op == Condition::Op::Ge);
+        CHECK(c.children[0].value == 3.0);
+        const Condition& any = c.children[1];
+        CHECK(any.kind == Condition::Kind::Any && any.children.size() == 2);
+        if (any.children.size() == 2) {
+            CHECK(any.children[0].value == 1.0);   // true → 1.0
+            CHECK(any.children[0].op == Condition::Op::Eq);
+            CHECK(any.children[1].op == Condition::Op::Ne);
+            CHECK(any.children[1].value == 0.0);
+        }
+    }
+    const std::vector<Action>& acts = scene.events[0].actions;
+    CHECK(acts.size() == 3);
+    if (acts.size() == 3) {
+        CHECK(acts[0].type == Action::Type::AddFlag && acts[0].value == 1.0);
+        CHECK(acts[1].type == Action::Type::SetFlag && acts[1].value == 250.0);
+        CHECK(acts[2].type == Action::Type::SetFlag && acts[2].value == 1.0);
+    }
+}
+
 void test_scene_load() {
     test_scene_sheets();
     test_scene_orientation();
+    test_scene_conditions();
     const char* dir = "src/levels";
     CHECK_MSG(fs::is_directory(dir), "run from the repo root");
     if (!fs::is_directory(dir)) return;

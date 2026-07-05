@@ -6,14 +6,41 @@
 
 namespace cv {
 
-static bool flagValue(const SimState& state, const std::string& name) {
+static double flagValue(const SimState& state, const std::string& name) {
     auto it = state.flags.find(name);
-    return it != state.flags.end() && it->second;
+    return it == state.flags.end() ? 0.0 : it->second;
 }
 
+// Recursive: a condition is a flag comparison or an all/any composition.
 static bool conditionPasses(const SimState& state, const Condition& c) {
-    if (!c.present) return true;
-    return flagValue(state, c.flag) == c.value;
+    switch (c.kind) {
+        case Condition::Kind::None:
+            return true;
+
+        case Condition::Kind::Flag: {
+            const double v = flagValue(state, c.flag);
+            switch (c.op) {
+                case Condition::Op::Eq: return v == c.value;
+                case Condition::Op::Ne: return v != c.value;
+                case Condition::Op::Lt: return v <  c.value;
+                case Condition::Op::Le: return v <= c.value;
+                case Condition::Op::Gt: return v >  c.value;
+                case Condition::Op::Ge: return v >= c.value;
+            }
+            return false;
+        }
+
+        case Condition::Kind::All:
+            for (const Condition& child : c.children)
+                if (!conditionPasses(state, child)) return false;
+            return true;
+
+        case Condition::Kind::Any:
+            for (const Condition& child : c.children)
+                if (conditionPasses(state, child)) return true;
+            return false;
+    }
+    return true;
 }
 
 static void runActions(const Scene& scene, SimState& state, float now,
@@ -28,6 +55,10 @@ static void runActions(const Scene& scene, SimState& state, float now,
 
             case Action::Type::SetFlag:
                 state.flags[a.flag] = a.value;
+                break;
+
+            case Action::Type::AddFlag:
+                state.flags[a.flag] += a.value;   // missing flag starts at 0
                 break;
 
             case Action::Type::SetAnim: {
@@ -73,7 +104,7 @@ static void runActions(const Scene& scene, SimState& state, float now,
             case Action::Type::SetControlled: {
                 EntityId id = scene.idOf(a.entity);
                 if (id == 0) break;
-                state.attrs[id].controlled = a.value;
+                state.attrs[id].controlled = (a.value != 0.0);
                 break;
             }
         }

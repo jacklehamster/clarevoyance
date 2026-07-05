@@ -41,7 +41,9 @@ struct SimClock {
 struct SimState {
     std::unordered_map<EntityId, Instance>    entities;  // working kinematic state
     std::unordered_map<EntityId, EntityAttrs> attrs;     // controlled/speed per entity
-    std::unordered_map<std::string, bool>     flags;     // event flags
+    // Event flags: one numeric store for both booleans (0/1) and counters.
+    // A flag that was never set reads as 0.0 (i.e. false).
+    std::unordered_map<std::string, double>   flags;
     std::vector<uint8_t> fired;   // per-event fired markers, indexed by event position
     SimClock clock;               // the sim's own tick clock
     bool started = false;         // start triggers fire on the first step only

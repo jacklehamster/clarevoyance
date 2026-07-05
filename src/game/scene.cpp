@@ -102,13 +102,56 @@ Trigger readTrigger(const JsonValue& t) {
     return tr;
 }
 
+// Flag values are numeric; JSON booleans map to 0/1 so data files may keep
+// writing `"value": true` for boolean-style flags.
+double numOrBool(const JsonValue* v, double fallback) {
+    if (!v) return fallback;
+    if (v->type == JsonValue::Type::Bool) return v->boolVal ? 1.0 : 0.0;
+    return v->number(fallback);
+}
+
+// Recursive condition parse: {"all":[...]} / {"any":[...]} composition, or a
+// single flag comparison {"flag": name, "value": x, "op": "eq"|"ne"|...}.
+Condition readCondition(const JsonValue& c) {
+    Condition cond;
+    if (const JsonValue* all = c.find("all")) {
+        cond.kind = Condition::Kind::All;
+        if (all->isArray())
+            for (const JsonValue& child : all->arr)
+                cond.children.push_back(readCondition(child));
+        return cond;
+    }
+    if (const JsonValue* any = c.find("any")) {
+        cond.kind = Condition::Kind::Any;
+        if (any->isArray())
+            for (const JsonValue& child : any->arr)
+                cond.children.push_back(readCondition(child));
+        return cond;
+    }
+    cond.kind  = Condition::Kind::Flag;
+    cond.flag  = c.find("flag") ? c.find("flag")->string() : "";
+    cond.value = numOrBool(c.find("value"), 1.0);
+    std::string op = c.find("op") ? c.find("op")->string() : "eq";
+    if      (op == "ne") cond.op = Condition::Op::Ne;
+    else if (op == "lt") cond.op = Condition::Op::Lt;
+    else if (op == "le") cond.op = Condition::Op::Le;
+    else if (op == "gt") cond.op = Condition::Op::Gt;
+    else if (op == "ge") cond.op = Condition::Op::Ge;
+    else                 cond.op = Condition::Op::Eq;
+    return cond;
+}
+
 Action readAction(const JsonValue& a) {
     Action ac;
     std::string type = a.find("type") ? a.find("type")->string() : "dialogue";
     if (type == "set_flag") {
         ac.type  = Action::Type::SetFlag;
         ac.flag  = a.find("flag") ? a.find("flag")->string() : "";
-        ac.value = a.find("value") ? a.find("value")->boolean(true) : true;
+        ac.value = numOrBool(a.find("value"), 1.0);
+    } else if (type == "add_flag") {
+        ac.type  = Action::Type::AddFlag;
+        ac.flag  = a.find("flag") ? a.find("flag")->string() : "";
+        ac.value = numOrBool(a.find("value"), 1.0);
     } else if (type == "set_anim") {
         ac.type   = Action::Type::SetAnim;
         ac.entity = a.find("entity") ? a.find("entity")->string() : "";
@@ -129,7 +172,7 @@ Action readAction(const JsonValue& a) {
     } else if (type == "set_controlled") {
         ac.type   = Action::Type::SetControlled;
         ac.entity = a.find("entity") ? a.find("entity")->string() : "";
-        ac.value  = a.find("value") ? a.find("value")->boolean(true) : true;
+        ac.value  = numOrBool(a.find("value"), 1.0);
     } else {
         ac.type = Action::Type::Dialogue;
         ac.id   = a.find("id") ? a.find("id")->string() : "";
@@ -198,11 +241,8 @@ bool loadScene(const char* path, Scene& out, std::string& error) {
             for (const JsonValue& ev : evs->arr) {
                 Event event;
                 if (const JsonValue* t = ev.find("trigger")) event.trigger = readTrigger(*t);
-                if (const JsonValue* c = ev.find("condition")) {
-                    event.condition.present = true;
-                    event.condition.flag  = c->find("flag") ? c->find("flag")->string() : "";
-                    event.condition.value = c->find("value") ? c->find("value")->boolean(true) : true;
-                }
+                if (const JsonValue* c = ev.find("condition"))
+                    event.condition = readCondition(*c);
                 if (const JsonValue* once = ev.find("once")) event.once = once->boolean(true);
                 if (const JsonValue* acts = ev.find("actions")) {
                     if (acts->isArray())

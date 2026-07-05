@@ -46,20 +46,30 @@ struct Trigger {
     Edge edge = Edge::Pressed;  // input: fire on pressed / released / held
 };
 
+// A condition is a small recursive tree: either a single flag comparison
+// (flags[flag] <op> value — booleans are 0/1, missing flags read 0) or a
+// composition of children: "all" (logical AND) / "any" (logical OR).
 struct Condition {
-    bool present = false;   // no condition → always passes
-    std::string flag;
-    bool value = true;      // condition passes when flags[flag] == value
+    enum class Kind { None, Flag, All, Any };  // None → always passes
+    enum class Op   { Eq, Ne, Lt, Le, Gt, Ge };
+    Kind kind = Kind::None;
+
+    std::string flag;       // Flag: flag name
+    double value = 1.0;     // Flag: comparison operand (JSON bools become 0/1)
+    Op op = Op::Eq;         // Flag: comparison operator (default equality)
+
+    std::vector<Condition> children;  // All / Any: sub-conditions
 };
 
 struct Action {
-    enum class Type { Dialogue, SetFlag, SetAnim, SetMotion, Remove,
+    enum class Type { Dialogue, SetFlag, AddFlag, SetAnim, SetMotion, Remove,
                       ToggleControlled, SetControlled };
     Type type = Type::Dialogue;
 
     std::string id;         // dialogue: line id
-    std::string flag;       // set_flag: flag name
-    bool value = true;      // set_flag / set_controlled: value
+    std::string flag;       // set_flag / add_flag: flag name
+    double value = 1.0;     // set_flag / add_flag / set_controlled: value
+                            // (JSON bools become 0/1; set_controlled: nonzero = true)
 
     std::string entity;     // set_anim / set_motion / remove / *_controlled: target
     int   first = 0;        // set_anim: first frame
