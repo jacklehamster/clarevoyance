@@ -67,15 +67,26 @@ A thrown projectile flying through an arc uploads its instance once. The GPU dra
 
 ## Rendering Pipeline
 
-### One draw call
+### Two passes, one draw call each
 
 All sprites share a single unit quad (two triangles, six indices). The quad is drawn `N` times via `glDrawElementsInstanced`. Per-instance attributes are bound with `glVertexAttribDivisor(loc, 1)`.
 
+Instances are partitioned by tint alpha into two buckets, each a packed array with its own VAO + instance VBO (sharing the quad VBO/EBO):
+
+| Pass | Bucket | Depth test | Depth write | Purpose |
+|------|--------|-----------|-------------|---------|
+| 1 | **opaque** (`tint.a ≥ 0.999`) | on | **on** | normal sprites/quads |
+| 2 | **translucent** (`tint.a < 0.999`) | on | **off** | shim ghosts — blend over the scene without punching depth holes |
+
+Blending is enabled for both passes (as it always was — sprite edges stay identical), so opaque-only scenes render pixel-identically to the single-pass renderer. Two VAOs/VBOs is the WebGL2-portable way to issue two instance ranges: GLES 3.0 has no `baseInstance`, so offsetting into one shared buffer between draws is not an option. An upsert whose tint alpha crosses the threshold migrates the instance between buckets automatically (swap-remove bookkeeping per bucket, shared `id → (bucket, slot)` map).
+
+**Future work:** the translucent pass is not depth-sorted per instance — shims sit at similar depths so ordering artifacts are negligible for now; add back-to-front sorting within the bucket if stacked translucents ever matter.
+
 ```
-Quad VBO  ──┐
-Quad EBO  ──┤──► glDrawElementsInstanced(GL_TRIANGLES, 6, …, N)
-Instance  ──┘
-VBO (N×Instance)
+Quad VBO/EBO ──┬──► pass 1: glDrawElementsInstanced(…, N_opaque)       [VAO 0]
+Opaque VBO   ──┘
+Quad VBO/EBO ──┬──► pass 2: glDrawElementsInstanced(…, N_translucent)  [VAO 1]
+Transluc. VBO──┘
 ```
 
 ### Sprite sheets — one texture array, loadable at runtime
@@ -156,9 +167,9 @@ struct Diff {
 };
 ```
 
-The renderer maintains a packed `vector<Instance>` for GPU upload plus an `id → slot` map for O(1) lookup. Removal uses swap-remove to keep the array packed without holes.
+The renderer maintains one packed `vector<Instance>` per bucket (opaque / translucent — see the rendering passes above) plus a shared `id → (bucket, slot)` map for O(1) lookup. Removal uses swap-remove to keep each array packed without holes; an upsert that changes an instance's opacity class moves it between buckets.
 
-Instance buffer re-upload happens at most once per frame, only when `instancesDirty_` is set.
+Instance buffer re-upload happens at most once per bucket per frame, only when that bucket's dirty flag is set.
 
 ---
 
@@ -244,7 +255,7 @@ The shim system — ghost previews of future entity positions — maps cleanly o
 
 1. The CPU runs a lightweight lookahead simulation N seconds ahead (positions + AABB collision, no rendering).
 2. Shim instances are added to the scene with the *future* position encoded as `pos` and `motionStart = now + lookahead`.
-3. They are rendered with a translucent tint via the `tint` field on Instance (implemented — per-instance GPU attribute at location 10, multiplied in the fragment shader).
+3. They are rendered with a translucent tint via the `tint` field on Instance (implemented — per-instance GPU attribute at location 10, multiplied in the fragment shader). The dedicated translucent render pass (depth test on, depth write off) is also implemented — see the rendering pipeline above.
 
 Because the simulation is deterministic (same inputs → same outputs, seeded RNG only), the lookahead produces stable, flicker-free shims. The GPU evaluates them using the exact same motion formula as live sprites.
 

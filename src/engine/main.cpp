@@ -52,6 +52,12 @@ static const int   GRID_H      = 30;
 static const float GRID_EXTENT = 20.0f;
 static const float GRID_STEP   = GRID_EXTENT / GRID_W;
 
+// Translucent "ghost" penguins hovering over the grid — exercises the
+// translucent render pass (depth test on, depth write off; see renderer.cpp).
+static const int   NGHOSTS          = 3;
+static const float GHOST_TINT_ALPHA = 0.4f;
+static const float GHOST_SCALE      = GRID_EXTENT * 0.15f;
+
 static const int WINDOW_W = 1280;
 static const int WINDOW_H = 720;
 
@@ -489,6 +495,20 @@ int main(int, char**) {
                 state.instances[id] = inst;
             }
         }
+
+        // A few translucent ghosts floating over the crowd (shim-style tint).
+        for (int g = 0; g < NGHOSTS; ++g, ++id) {
+            float x = GRID_EXTENT * (0.3f + 0.2f * g);
+            float z = GRID_EXTENT * 0.5f;
+            Instance ghost = makeBillboard(
+                {x, GHOST_SCALE * 0.5f + 0.5f, z}, {GHOST_SCALE, GHOST_SCALE});
+            ghost.tint = {1.0f, 1.0f, 1.0f, GHOST_TINT_ALPHA};
+            setAnimation(ghost, ANIMS[0].first, ANIMS[0].count, ANIM_FPS,
+                         -0.13f * g);
+            state.instances[id] = ghost;
+        }
+        total += NGHOSTS;
+
         renderer.applyState(state);  // one upload — never touched again
     }
     SDL_Log("Buffer uploaded. Rendering %d instances per frame.", total);

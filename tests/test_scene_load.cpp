@@ -70,7 +70,8 @@ static void test_scene_orientation() {
         "entities": [
             { "id": "floor", "pos": [0, 0, 0], "billboard": false,
               "rotation": 0.5, "pitch": -1.5707963 },
-            { "id": "wall", "pos": [1, 0, 0], "billboard": false, "rotation": 1.0 },
+            { "id": "wall", "pos": [1, 0, 0], "billboard": false, "rotation": 1.0,
+              "tint": [1, 1, 1, 0.4] },
             { "id": "sprite", "pos": [2, 0, 0], "billboard": true, "pitch": 2.0 }
         ]
     })", scene, err);
@@ -81,6 +82,8 @@ static void test_scene_orientation() {
     const Instance& wall = scene.initialState.instances[scene.idOf("wall")];
     CHECK(wall.rotation == 1.0f);
     CHECK(wall.pitch == 0.0f);      // defaults upright
+    CHECK(wall.tint.w == 0.4f);     // translucent tint parsed
+    CHECK(floor.tint.w == 1.0f);    // tint defaults opaque
     // Billboards ignore orientation fields entirely.
     CHECK(scene.initialState.instances[scene.idOf("sprite")].pitch == 0.0f);
 }

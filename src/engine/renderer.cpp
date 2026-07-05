@@ -122,44 +122,52 @@ bool Renderer::init() {
     };
     const unsigned int indices[] = {0, 1, 2, 0, 2, 3};
 
-    glGenVertexArrays(1, &vao_);
     glGenBuffers(1, &quadVbo_);
     glGenBuffers(1, &quadEbo_);
-    glGenBuffers(1, &instanceVbo_);
-
-    glBindVertexArray(vao_);
-
     glBindBuffer(GL_ARRAY_BUFFER, quadVbo_);
     glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quadEbo_);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
-                          (void*)(2 * sizeof(float)));
-    glEnableVertexAttribArray(1);
+    // One VAO + instance VBO per bucket (opaque / translucent), both sharing
+    // the quad VBO/EBO. Two VAOs is the WebGL2-portable way to issue the two
+    // passes — GLES 3.0 has no baseInstance to offset into a single buffer.
+    for (Bucket& b : buckets_) {
+        glGenVertexArrays(1, &b.vao);
+        glGenBuffers(1, &b.vbo);
+        glBindVertexArray(b.vao);
 
-    // Per-instance attributes — described directly off the Instance struct.
-    glBindBuffer(GL_ARRAY_BUFFER, instanceVbo_);
-    const GLsizei stride = sizeof(Instance);
-    auto attrib = [&](GLuint loc, GLint size, size_t off) {
-        glVertexAttribPointer(loc, size, GL_FLOAT, GL_FALSE, stride, (void*)off);
-        glEnableVertexAttribArray(loc);
-        glVertexAttribDivisor(loc, 1);
-    };
-    attrib(2, 3, offsetof(Instance, pos));
-    attrib(3, 3, offsetof(Instance, vel));
-    attrib(4, 3, offsetof(Instance, accel));
-    attrib(5, 1, offsetof(Instance, motionStart));
-    attrib(6, 2, offsetof(Instance, scale));
-    attrib(7, 2, offsetof(Instance, rotation));  // vec2: (rotation=yaw, pitch)
-    attrib(8, 1, offsetof(Instance, billboard));
-    attrib(9, 4, offsetof(Instance, anim));
-    attrib(10, 4, offsetof(Instance, tint));
-    attrib(11, 1, offsetof(Instance, sheet));
+        glBindBuffer(GL_ARRAY_BUFFER, quadVbo_);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quadEbo_);
+        if (&b == &buckets_[0])  // EBO data uploads once; binding is per-VAO
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices,
+                         GL_STATIC_DRAW);
 
-    glBindVertexArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                              (void*)(2 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+
+        // Per-instance attributes — described directly off the Instance struct.
+        glBindBuffer(GL_ARRAY_BUFFER, b.vbo);
+        const GLsizei stride = sizeof(Instance);
+        auto attrib = [&](GLuint loc, GLint size, size_t off) {
+            glVertexAttribPointer(loc, size, GL_FLOAT, GL_FALSE, stride, (void*)off);
+            glEnableVertexAttribArray(loc);
+            glVertexAttribDivisor(loc, 1);
+        };
+        attrib(2, 3, offsetof(Instance, pos));
+        attrib(3, 3, offsetof(Instance, vel));
+        attrib(4, 3, offsetof(Instance, accel));
+        attrib(5, 1, offsetof(Instance, motionStart));
+        attrib(6, 2, offsetof(Instance, scale));
+        attrib(7, 2, offsetof(Instance, rotation));  // vec2: (rotation=yaw, pitch)
+        attrib(8, 1, offsetof(Instance, billboard));
+        attrib(9, 4, offsetof(Instance, anim));
+        attrib(10, 4, offsetof(Instance, tint));
+        attrib(11, 1, offsetof(Instance, sheet));
+
+        glBindVertexArray(0);
+    }
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
@@ -201,10 +209,12 @@ int Renderer::loadSheet(const char* path, int cols, int rows) {
 
 void Renderer::shutdown() {
     destroyTextureArray(textureArray_);
-    if (instanceVbo_) glDeleteBuffers(1, &instanceVbo_);
+    for (Bucket& b : buckets_) {
+        if (b.vbo) glDeleteBuffers(1, &b.vbo);
+        if (b.vao) glDeleteVertexArrays(1, &b.vao);
+    }
     if (quadEbo_) glDeleteBuffers(1, &quadEbo_);
     if (quadVbo_) glDeleteBuffers(1, &quadVbo_);
-    if (vao_) glDeleteVertexArrays(1, &vao_);
     if (program_) glDeleteProgram(program_);
     *this = Renderer{};
 }
@@ -214,17 +224,16 @@ void Renderer::shutdown() {
 // ---------------------------------------------------------------------------
 
 void Renderer::applyState(const WorldState& state) {
-    instances_.clear();
     idToSlot_.clear();
-    slotToId_.clear();
-    for (const auto& [id, inst] : state.instances) {
-        idToSlot_[id] = instances_.size();
-        slotToId_.push_back(id);
-        instances_.push_back(inst);
+    for (Bucket& b : buckets_) {
+        b.instances.clear();
+        b.slotToId.clear();
+        b.dirty = true;
     }
+    for (const auto& [id, inst] : state.instances)
+        insertInto(bucketFor(inst), id, inst);
     cameras_ = state.cameras;
     activeCamera_ = state.activeCamera;
-    instancesDirty_ = true;
 }
 
 void Renderer::applyDiff(const Diff& diff) {
@@ -232,49 +241,68 @@ void Renderer::applyDiff(const Diff& diff) {
     for (EntityId id : diff.removals) remove(id);
     if (diff.replaceCameras && !diff.cameras.empty()) cameras_ = diff.cameras;
     if (diff.setActiveCamera) activeCamera_ = diff.activeCamera;
-    // instancesDirty_ is set by upsert/remove as needed.
+    // Bucket dirty flags are set by upsert/remove as needed.
+}
+
+void Renderer::insertInto(int bucket, EntityId id, const Instance& inst) {
+    Bucket& b = buckets_[bucket];
+    idToSlot_[id] = SlotRef{bucket, b.instances.size()};
+    b.slotToId.push_back(id);
+    b.instances.push_back(inst);
+    b.dirty = true;
+}
+
+// Swap-remove within a bucket: move the last instance into the freed slot.
+void Renderer::removeFromBucket(int bucket, size_t slot) {
+    Bucket& b = buckets_[bucket];
+    size_t last = b.instances.size() - 1;
+    if (slot != last) {
+        b.instances[slot] = b.instances[last];
+        EntityId movedId = b.slotToId[last];
+        b.slotToId[slot] = movedId;
+        idToSlot_[movedId] = SlotRef{bucket, slot};
+    }
+    b.instances.pop_back();
+    b.slotToId.pop_back();
+    b.dirty = true;
 }
 
 void Renderer::upsert(EntityId id, const Instance& inst) {
+    const int want = bucketFor(inst);
     auto it = idToSlot_.find(id);
     if (it == idToSlot_.end()) {
-        idToSlot_[id] = instances_.size();
-        slotToId_.push_back(id);
-        instances_.push_back(inst);
-    } else {
-        instances_[it->second] = inst;
+        insertInto(want, id, inst);
+        return;
     }
-    instancesDirty_ = true;
+    if (it->second.bucket == want) {
+        Bucket& b = buckets_[want];
+        b.instances[it->second.index] = inst;
+        b.dirty = true;
+        return;
+    }
+    // Opacity class changed (e.g. a live sprite becoming a translucent shim):
+    // migrate the instance to the other bucket.
+    removeFromBucket(it->second.bucket, it->second.index);
+    insertInto(want, id, inst);
 }
 
 void Renderer::remove(EntityId id) {
     auto it = idToSlot_.find(id);
     if (it == idToSlot_.end()) return;
-
-    // Swap-remove: move the last instance into the freed slot.
-    size_t slot = it->second;
-    size_t last = instances_.size() - 1;
-    if (slot != last) {
-        instances_[slot] = instances_[last];
-        EntityId movedId = slotToId_[last];
-        slotToId_[slot] = movedId;
-        idToSlot_[movedId] = slot;
-    }
-    instances_.pop_back();
-    slotToId_.pop_back();
+    SlotRef ref = it->second;
     idToSlot_.erase(it);
-    instancesDirty_ = true;
+    removeFromBucket(ref.bucket, ref.index);
 }
 
-void Renderer::uploadInstances() {
-    glBindBuffer(GL_ARRAY_BUFFER, instanceVbo_);
+void Renderer::uploadBucket(Bucket& b) {
+    glBindBuffer(GL_ARRAY_BUFFER, b.vbo);
     // Whole-buffer re-upload. Simple and plenty fast at our instance counts;
     // switch to ranged glBufferSubData only if profiling ever asks for it.
     glBufferData(GL_ARRAY_BUFFER,
-                 static_cast<GLsizeiptr>(instances_.size() * sizeof(Instance)),
-                 instances_.empty() ? nullptr : instances_.data(),
+                 static_cast<GLsizeiptr>(b.instances.size() * sizeof(Instance)),
+                 b.instances.empty() ? nullptr : b.instances.data(),
                  GL_DYNAMIC_DRAW);
-    instancesDirty_ = false;
+    b.dirty = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -282,12 +310,15 @@ void Renderer::uploadInstances() {
 // ---------------------------------------------------------------------------
 
 void Renderer::render(float time) {
-    if (instancesDirty_) uploadInstances();
+    for (Bucket& b : buckets_)
+        if (b.dirty) uploadBucket(b);
 
     glClearColor(0.08f, 0.08f, 0.12f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    if (instances_.empty()) return;
+    if (buckets_[OPAQUE].instances.empty() &&
+        buckets_[TRANSLUCENT].instances.empty())
+        return;
 
     Camera* cam = activeCamera();
     cam->aspect = viewportH_ > 0
@@ -313,9 +344,28 @@ void Renderer::render(float time) {
     glBindTexture(GL_TEXTURE_2D_ARRAY, textureArray_.id);
     setUniform(program_, "uTex", 0);
 
-    glBindVertexArray(vao_);
-    glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr,
-                            static_cast<GLsizei>(instances_.size()));
+    // Pass 1 — opaque: depth write ON (blending stays enabled as always; the
+    // alpha cutout in the fragment shader keeps sprite edges clean).
+    if (!buckets_[OPAQUE].instances.empty()) {
+        glDepthMask(GL_TRUE);
+        glBindVertexArray(buckets_[OPAQUE].vao);
+        glDrawElementsInstanced(
+            GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr,
+            static_cast<GLsizei>(buckets_[OPAQUE].instances.size()));
+    }
+
+    // Pass 2 — translucent (shims): depth test ON, depth write OFF, so ghosts
+    // never punch holes in the depth buffer. No per-instance depth sorting
+    // within this pass for now (shims sit at similar depths) — future work.
+    if (!buckets_[TRANSLUCENT].instances.empty()) {
+        glDepthMask(GL_FALSE);
+        glBindVertexArray(buckets_[TRANSLUCENT].vao);
+        glDrawElementsInstanced(
+            GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr,
+            static_cast<GLsizei>(buckets_[TRANSLUCENT].instances.size()));
+        glDepthMask(GL_TRUE);  // restore: glClear needs the depth mask on
+    }
+
     glBindVertexArray(0);
 }
 

@@ -18,6 +18,12 @@ Vec2 readVec2(const JsonValue* v, Vec2 fallback) {
     return { v->at(0, fallback.x), v->at(1, fallback.y) };
 }
 
+Vec4 readVec4(const JsonValue* v, Vec4 fallback) {
+    if (!v || !v->isArray()) return fallback;
+    return { v->at(0, fallback.x), v->at(1, fallback.y),
+             v->at(2, fallback.z), v->at(3, fallback.w) };
+}
+
 Camera readCamera(const JsonValue& c) {
     Camera cam;
     if (const JsonValue* p = c.find("projection"))
@@ -56,6 +62,9 @@ Instance readEntity(const JsonValue& e, EntityAttrs& attrs) {
     // Optional sheet index into the scene's "sheets" list (default 0).
     if (const JsonValue* sh = e.find("sheet"))
         inst.sheet = static_cast<float>(static_cast<int>(sh->number(0)));
+
+    // Optional RGBA tint multiplier; alpha < 1 renders in the translucent pass.
+    inst.tint = readVec4(e.find("tint"), inst.tint);
 
     if (const JsonValue* a = e.find("anim")) {
         int   first = static_cast<int>(a->find("first") ? a->find("first")->number() : 0);
