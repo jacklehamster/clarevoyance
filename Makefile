@@ -36,7 +36,7 @@ IMGDIFF   := tools/imgdiff
 TEST_FRAMES := 120
 TEST_TIME   := 2.0
 
-.PHONY: all build bundle run demo demo-controls demo-events demo-menu clean \
+.PHONY: all build bundle run demo demo-controls demo-events demo-menu demo-world clean \
         build-wasm run-wasm \
         deploy \
         test test-unit test-wasm test-parity
@@ -69,6 +69,12 @@ demo-events: $(BIN)
 # is tracked via flags and expressed through sprite animation.
 demo-menu: $(BIN)
 	CV_SCENE=src/levels/menu.json $(BIN)
+
+# World demo: a small room — tiled floor (pitched quads), brick walls (upright
+# quads, second sprite sheet), the controlled player, and a translucent ghost
+# penguin rendered by the translucent pass (a shim preview teaser).
+demo-world: $(BIN)
+	CV_SCENE=src/levels/world.json $(BIN)
 
 $(BIN): $(SRC) $(wildcard src/engine/*.h) $(wildcard src/game/*.h)
 	@mkdir -p build
