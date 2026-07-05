@@ -9,6 +9,7 @@ void test_serialize();
 void test_events();
 void test_determinism();
 void test_scene_load();
+void test_text();
 
 int main() {
     test_json();
@@ -16,6 +17,7 @@ int main() {
     test_events();
     test_determinism();
     test_scene_load();
+    test_text();
 
     std::printf("%s: %d checks, %d failures\n",
                 g_failures == 0 ? "OK" : "FAILED", g_checks, g_failures);

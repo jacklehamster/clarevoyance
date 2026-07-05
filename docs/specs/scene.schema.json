@@ -51,6 +51,17 @@
         }
       },
       "additionalProperties": false
+    },
+    "dialogueText": {
+      "description": "Optional: when present, every 'dialogue' action ALSO spawns the line's id as on-screen text at this position for ~3 seconds (180 ticks), in addition to the CV_DIALOGUE printf it always emits.",
+      "type": "object",
+      "properties": {
+        "pos":      { "$ref": "#/definitions/vec3" },
+        "charSize": { "$ref": "#/definitions/vec2", "description": "Per-glyph [width, height] in world units (default [0.5, 0.5])." },
+        "sheet":    { "type": "integer", "minimum": 0, "description": "Index into the scene's \"sheets\" list (the font sheet)." },
+        "tint":     { "$ref": "#/definitions/vec4" }
+      },
+      "additionalProperties": false
     }
   },
   "required": ["version"],
@@ -141,7 +152,9 @@
           ]
         },
         "controlled": { "type": "boolean", "description": "Movement input applies to every controlled entity." },
-        "speed":      { "type": "number", "minimum": 0, "description": "Movement rate, world units / second." }
+        "speed":      { "type": "number", "minimum": 0, "description": "Movement rate, world units / second." },
+        "text":       { "type": "string", "description": "Text entities only: the string to render. Expands to one glyph Instance per character (src/game/text.h); the entity's \"id\" binds to the first glyph, and 'remove' despawns the whole string as one unit." },
+        "charSize":   { "$ref": "#/definitions/vec2", "description": "Text entities only: per-glyph [width, height] in world units (default [0.5, 0.5])." }
       }
     },
 

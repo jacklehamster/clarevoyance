@@ -20,6 +20,11 @@
 
 namespace cv {
 
+// Runtime-spawned dialogue text (Scene::dialogueText config) despawns after
+// this many ticks — 180 ticks at the fixed 60 Hz SIM_DT is exactly 3 seconds,
+// and it's tick-driven so the expiry stays as deterministic as everything else.
+constexpr int DIALOGUE_TEXT_TICKS = 180;
+
 // Evaluate all scene events against the given entity positions (keyed by id)
 // at sim time `now`, with the abstract input actions resolved for this tick.
 // Mutates `state` (flags, fired markers, entities, attrs), appends renderer

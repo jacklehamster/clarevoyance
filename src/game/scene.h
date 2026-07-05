@@ -113,6 +113,19 @@ struct SheetInfo {
     int rows = 1;
 };
 
+// Optional scene-level config: when present, the `dialogue` action (see
+// Action::Type::Dialogue) ALSO spawns the dialogue id's text at this position
+// for DIALOGUE_TEXT_TICKS ticks (see events.h), in addition to the CV_DIALOGUE
+// printf it always emits. Purely additive — scenes without this block behave
+// exactly as before (printf only).
+struct DialogueTextConfig {
+    bool  enabled  = false;
+    Vec3  pos      = {0, 0, 0};
+    Vec2  charSize = {0.5f, 0.5f};
+    int   sheet    = 0;
+    Vec4  tint     = {1, 1, 1, 1};
+};
+
 struct Scene {
     std::vector<SheetInfo> sheets;           // at least one (defaulted if absent)
     WorldState initialState;                 // entities + cameras, ready to upload
@@ -123,6 +136,16 @@ struct Scene {
 
     std::unordered_map<std::string, Archetype> archetypes;   // name → template
     std::unordered_map<EntityId, std::string>  archetypeOf;  // entity → archetype name
+
+    // Text entities (JSON "text" field) expand to one Instance per glyph
+    // (src/game/text.h, makeText). This maps the entity's first (name-bound)
+    // glyph id to its last glyph id (inclusive), so the `remove` action can
+    // despawn every glyph of a text entity as one unit. Absent for entities
+    // that aren't text (or text entities with empty content).
+    std::unordered_map<EntityId, EntityId> textRangeEnd;
+
+    // Optional scene-level "dialogueText" config (see DialogueTextConfig).
+    DialogueTextConfig dialogueText;
 
     // Resolve a data-file entity name to its numeric id. Returns 0 if unknown
     // (0 is never assigned to a real entity — ids start at 1).

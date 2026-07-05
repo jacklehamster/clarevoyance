@@ -47,6 +47,15 @@ struct SimState {
     std::vector<uint8_t> fired;   // per-event fired markers, indexed by event position
     SimClock clock;               // the sim's own tick clock
     bool started = false;         // start triggers fire on the first step only
+
+    // Runtime-spawned dialogue text (Scene::dialogueText config, consumed by
+    // Action::Type::Dialogue in events.cpp): ids are allocated starting well
+    // above any scene-authored id so they can never collide with a
+    // Scene::nameToId entry.
+    EntityId nextDynamicId = 1'000'000;
+    // Pending expirations: (tick at which to remove, glyph ids to remove).
+    // Checked once per step in stepSim — tick-driven, so it stays deterministic.
+    std::vector<std::pair<uint64_t, std::vector<EntityId>>> dialogueTextExpiry;
 };
 
 // Build the initial SimState for a freshly loaded scene: snapshot the scene's

@@ -310,6 +310,48 @@ composition (recursive to any depth):
 produce `Diff`s the renderer applies — they never call GL. This is the same seam the
 clairvoyance lookahead uses, so shim ghosts and scripted events share one deterministic sim.
 
+### Bitmap font / text entities
+
+Text is not a special renderer feature — it's data. `src/game/text.{h,cpp}` provides
+`makeText(s, pos, charW, charH, fontSheet, tint)`, a pure function that turns a string into
+one non-billboard `Instance` per character, laid out along `+X`, each sampling a cell of a
+font sheet keyed by `frame = ascii - 32`. The renderer never learns what "text" is; it just
+draws the quads it's given, exactly like every other sprite.
+
+`scripts/gen_font.py` generates `art/font.png`: 16 cols × 6 rows of 16×16 cells, white glyphs
+on transparent, covering ASCII 32 ("space") through 127 — the same flat cell-index convention
+as every other sheet.
+
+A scene entity with a `"text"` field expands to N glyph entities instead of one:
+
+```json
+{ "id": "title", "text": "FIND 3 KEYS", "pos": [1, 2, 0],
+  "charSize": [0.5, 0.5], "sheet": 2, "tint": [1, 1, 1, 1] }
+```
+
+`charSize` is the per-glyph `[width, height]` (default `[0.5, 0.5]`); `sheet` indexes the
+scene's `"sheets"` list (a font sheet). The entity's `id` binds to its *first* glyph, so
+triggers/actions can reference it by name as usual; `Scene::textRangeEnd` records the
+`[first, last]` glyph id range so the `remove` action despawns every glyph as one unit
+(`events.cpp`). There is no `set_text` action yet — static text plus `remove` covers the
+current demos.
+
+### Dialogue text (`dialogueText` scene config)
+
+The `dialogue` action always emits its `CV_DIALOGUE: <id>` printf. A scene may additionally
+declare a top-level `dialogueText` block:
+
+```json
+"dialogueText": { "pos": [0, 2.5, 4], "charSize": [0.3, 0.3], "sheet": 2, "tint": [1,1,1,1] }
+```
+
+When present, every `dialogue` action ALSO spawns its line id as glyph text at that position,
+using ids from a reserved runtime range (`SimState::nextDynamicId`, starting at 1,000,000 —
+well above any scene-authored id) so it can never collide with a named entity. The spawned
+text despawns automatically after `DIALOGUE_TEXT_TICKS` (180 ticks = 3 seconds at the fixed
+60 Hz tick) via `SimState::dialogueTextExpiry`, a tick-driven schedule checked once per
+`stepSim` — deterministic, no wall clock, replay-safe like everything else in the sim.
+
 ---
 
 ## Controls / Input

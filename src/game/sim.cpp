@@ -39,6 +39,22 @@ void stepSim(const Scene& scene, SimState& state,
     updateEvents(scene, state, simTime, positions, actions, out);
 
     state.clock.tick++;
+
+    // Expire runtime-spawned dialogue text (Scene::dialogueText — see
+    // Action::Type::Dialogue in events.cpp). Tick-driven, so replaying the
+    // same input sequence always expires text on the same tick.
+    for (auto it = state.dialogueTextExpiry.begin();
+         it != state.dialogueTextExpiry.end(); ) {
+        if (state.clock.tick >= it->first) {
+            for (EntityId id : it->second) {
+                state.entities.erase(id);
+                out.removals.push_back(id);
+            }
+            it = state.dialogueTextExpiry.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 } // namespace cv

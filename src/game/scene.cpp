@@ -7,6 +7,7 @@
 // top-level "version" (currently 1): missing warns on stderr, newer errors.
 #include "scene.h"
 #include "json.h"
+#include "text.h"
 
 #include <cstdio>
 
@@ -403,6 +404,36 @@ bool loadScene(const char* path, Scene& out, std::string& error) {
                 std::string name = e.find("id") ? e.find("id")->string() : "";
                 if (!name.empty() && out.nameToId.count(name))
                     return failCtx(error, ctx, "duplicate entity id '" + name + "'");
+
+                // Text entities ("text": "...") expand to one glyph Instance per
+                // character (src/game/text.h) instead of the usual single Instance.
+                // The name binds to the FIRST glyph's id; textRangeEnd records the
+                // [first,last] id range so `remove` can despawn the whole string.
+                if (const JsonValue* textVal = e.find("text")) {
+                    std::string content = textVal->string();
+                    Vec3 pos = {0, 0, 0};
+                    Vec2 charSize = {0.5f, 0.5f};
+                    Vec4 tint = {1, 1, 1, 1};
+                    int sheet = 0;
+                    if (!readVec3(e.find("pos"), pos, ctx + ".pos", error)) return false;
+                    if (!readVec2(e.find("charSize"), charSize, ctx + ".charSize", error)) return false;
+                    if (!readVec4(e.find("tint"), tint, ctx + ".tint", error)) return false;
+                    if (const JsonValue* sh = e.find("sheet")) sheet = static_cast<int>(sh->number(0));
+
+                    std::vector<Instance> glyphs =
+                        makeText(content, pos, charSize.x, charSize.y, sheet, tint);
+
+                    EntityId firstId = nextId++;   // reserved even if content is empty
+                    if (!name.empty()) out.nameToId[name] = firstId;
+                    if (!glyphs.empty()) {
+                        out.initialState.instances[firstId] = glyphs[0];
+                        for (size_t k = 1; k < glyphs.size(); ++k)
+                            out.initialState.instances[nextId++] = glyphs[k];
+                        out.textRangeEnd[firstId] = nextId - 1;
+                    }
+                    continue;
+                }
+
                 EntityId id = nextId++;
                 if (!name.empty()) out.nameToId[name] = id;
 
@@ -472,6 +503,20 @@ bool loadScene(const char* path, Scene& out, std::string& error) {
                 for (const auto& kv : b->obj)
                     out.bindings[kv.first] = kv.second.string();
         }
+    }
+
+    // Optional dialogueText config: when present, the `dialogue` action also
+    // spawns the line's text at this position for a few seconds (events.cpp).
+    if (const JsonValue* dt = root.find("dialogueText")) {
+        out.dialogueText.enabled = true;
+        if (!readVec3(dt->find("pos"), out.dialogueText.pos,
+                      "dialogueText.pos", error)) return false;
+        if (!readVec2(dt->find("charSize"), out.dialogueText.charSize,
+                      "dialogueText.charSize", error)) return false;
+        if (!readVec4(dt->find("tint"), out.dialogueText.tint,
+                      "dialogueText.tint", error)) return false;
+        if (const JsonValue* sh = dt->find("sheet"))
+            out.dialogueText.sheet = static_cast<int>(sh->number(0));
     }
 
     return true;

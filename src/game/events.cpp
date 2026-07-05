@@ -1,5 +1,6 @@
 // events.cpp — event/condition/action evaluation over (const Scene, SimState).
 #include "events.h"
+#include "text.h"
 
 #include <cstdio>
 #include <cmath>
@@ -48,10 +49,32 @@ static void runActions(const Scene& scene, SimState& state, float now,
                        const std::vector<Action>& actions, Diff& out) {
     for (const Action& a : actions) {
         switch (a.type) {
-            case Action::Type::Dialogue:
+            case Action::Type::Dialogue: {
                 // Engine-agnostic: a sink/UI can grep this prefix. For now it logs.
                 std::printf("CV_DIALOGUE: %s\n", a.id.c_str());
+
+                // Optional: also render the line as glyph quads for a few
+                // seconds (Scene::dialogueText config). Ids come from the
+                // dynamic allocator so they never collide with scene ids.
+                if (scene.dialogueText.enabled) {
+                    const DialogueTextConfig& cfg = scene.dialogueText;
+                    std::vector<Instance> glyphs = makeText(
+                        a.id, cfg.pos, cfg.charSize.x, cfg.charSize.y,
+                        cfg.sheet, cfg.tint);
+                    std::vector<EntityId> ids;
+                    ids.reserve(glyphs.size());
+                    for (const Instance& g : glyphs) {
+                        EntityId gid = state.nextDynamicId++;
+                        state.entities[gid] = g;
+                        out.upserts.emplace_back(gid, g);
+                        ids.push_back(gid);
+                    }
+                    if (!ids.empty())
+                        state.dialogueTextExpiry.emplace_back(
+                            state.clock.tick + DIALOGUE_TEXT_TICKS, std::move(ids));
+                }
                 break;
+            }
 
             case Action::Type::SetFlag:
                 state.flags[a.flag] = a.value;
@@ -98,9 +121,20 @@ static void runActions(const Scene& scene, SimState& state, float now,
             case Action::Type::Remove: {
                 EntityId id = scene.idOf(a.entity);
                 if (id == 0) break;
-                state.entities.erase(id);
-                state.attrs.erase(id);
-                out.removals.push_back(id);
+                // Text entities (scene.textRangeEnd) expand to a contiguous
+                // range of glyph ids — remove them all as one unit.
+                auto range = scene.textRangeEnd.find(id);
+                if (range != scene.textRangeEnd.end()) {
+                    for (EntityId gid = id; gid <= range->second; ++gid) {
+                        state.entities.erase(gid);
+                        state.attrs.erase(gid);
+                        out.removals.push_back(gid);
+                    }
+                } else {
+                    state.entities.erase(id);
+                    state.attrs.erase(id);
+                    out.removals.push_back(id);
+                }
                 break;
             }
 
