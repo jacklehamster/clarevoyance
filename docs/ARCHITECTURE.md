@@ -150,6 +150,65 @@ Multiple cameras can live in `WorldState`. `activeCamera` index selects which on
 
 ---
 
+## Fixed-Timestep Simulation Loop
+
+The game simulation advances in fixed ticks of `SIM_DT = 1/60 s` (60 Hz — owner
+decision, see `docs/specs/SHIM_SYSTEM.md`). Sim time is **derived** from an integer
+tick counter (`SimClock`, `src/game/sim.h`), never stored and never read from the
+wall clock, so it cannot drift and the same input sequence produces the same
+trigger firings at any frame rate on desktop, WASM, and Switch.
+
+### Accumulator
+
+The engine loop (`main.cpp`) runs a classic accumulator:
+
+```
+accum += wallDt  (capped at 0.25 s — no spiral of death after a pause)
+while (accum >= SIM_DT):
+    step the sim exactly one tick at simTime = clock.time()
+    accum -= SIM_DT
+render(clock.time() + accum)   // continuous time
+```
+
+Each sim tick runs input resolution, `applyMovement`, and event evaluation at the
+tick's sim time — see `stepSim(const Scene&, SimState&, const ResolvedActions&,
+Diff&)` in `src/game/sim.{h,cpp}`, which is pure with respect to its arguments.
+
+### Render interpolation
+
+`renderer.render()` receives the **continuous** time `clock.time() + accum` — sim
+time plus the unsimulated remainder — so visuals never stutter at frame rates that
+don't divide 60 Hz. Because motion is the analytic formula `pos + vel·t + ½·accel·t²`
+evaluated on the GPU, this is *exact*, not an approximation.
+
+### Input: engine-built, tick-stamped
+
+The game layer is **SDL-free**. The engine translates SDL events into a
+device-agnostic `InputFrame` (lowercase key names, down/pressed/released sets)
+once per rendered frame via `buildInputFrame` (`src/engine/sdl_input.{h,cpp}`) —
+the only place SDL keyboard events meet game input. The frame merges into a
+pending tick command; the first sim tick of the frame consumes the
+pressed/released edges (they never repeat across ticks; down-state persists), and
+edges arriving on a frame that runs zero ticks are kept for the next tick, never
+lost. Resolving actions for a tick is a pure function of (command, bindings) —
+conceptually a tick-stamped command, ready for lockstep networking.
+
+### Immutable Scene, copyable SimState
+
+After `loadScene()` the `Scene` is immutable data. ALL runtime mutation lives in
+`SimState` (`src/game/sim.h`): entity instances, per-entity attrs, flags, per-event
+fired markers, and the `SimClock`. `SimState` is cheaply copyable with no pointers
+into the Scene or renderer — copying it and stepping the copy forward is the shim
+lookahead's core operation.
+
+### CV_FIXED_TIME
+
+In fixed-time test mode the clock is pinned at `tick = round(CV_FIXED_TIME /
+SIM_DT)` and one sim step runs per rendered frame at that constant sim time, so
+test screenshots stay deterministic across runs and platforms.
+
+---
+
 ## Clairvoyance Shim System (planned)
 
 The shim system — ghost previews of future entity positions — maps cleanly onto this architecture:
@@ -160,15 +219,22 @@ The shim system — ghost previews of future entity positions — maps cleanly o
 
 Because the simulation is deterministic (same inputs → same outputs, seeded RNG only), the lookahead produces stable, flicker-free shims. The GPU evaluates them using the exact same motion formula as live sprites.
 
+Both prerequisites are now in place: the fixed-timestep sim (60 Hz tick clock) and the forkable `SimState` — copy it, advance the copy with `stepSim`, read out predicted positions, discard (see the Fixed-Timestep Simulation Loop section).
+
 ---
 
 ## Determinism
 
 All game simulation must be deterministic from day one — required by the shim lookahead system.
 
-- No frame-rate-dependent physics. All motion uses the explicit time formula above.
+- Fixed 60 Hz timestep; sim time = `tick * SIM_DT`, never wall clock (see the
+  Fixed-Timestep Simulation Loop section). No frame-rate-dependent physics. All
+  motion uses the explicit time formula above.
 - Seeded RNG only, never `rand()`.
 - Enemy AI state transitions must be functions of simulation time and input events, not wall-clock time.
+- Enforced by `make test-unit`: a determinism replay test runs the same
+  tick-stamped input script under different frame batchings and asserts
+  bit-identical results.
 
 The GPU side is inherently deterministic: same `uTime` + same instance buffer → same pixels.
 
@@ -186,21 +252,31 @@ src/engine/
   instance.h        — Instance POD + makeBillboard/makeSprite/setAnimation/setMotion
   world_state.h     — WorldState, Diff, EntityId
   renderer.h/.cpp   — Renderer: owns VAO/VBOs/program/texture, applyState/applyDiff/render
-  main.cpp          — entry point: stress-test demo, or a data-driven scene via
-                      CV_SCENE=path (with once-per-second hot-reload on desktop)
+  sdl_input.h/.cpp  — buildInputFrame: SDL events → device-agnostic InputFrame
+                      (the ONLY place SDL keyboard events meet game input)
+  main.cpp          — entry point: fixed-timestep accumulator loop; stress-test
+                      demo, or a data-driven scene via CV_SCENE=path (with
+                      once-per-second hot-reload on desktop)
   screenshot.h/.cpp — captureFramebufferBase64, framebufferNonBlank (test helpers)
   third_party/
     stb_image.h       — vendored v2.30
     stb_image_write.h — vendored (used by screenshot.cpp for PNG encoding)
 
-src/game/
+src/game/           — SDL-free; compiles without GL (see make test-unit)
   json.h            — minimal JSON parser for scene files (no external deps)
-  scene.h/.cpp      — Scene: entities/cameras/events/bindings parsed from JSON, loadScene()
-  events.h/.cpp     — EventSystem: data-driven trigger/condition/action rules → Diff
-  input.h/.cpp      — InputFrame/Bindings/ResolvedActions, free movement, InputSource
+  scene.h/.cpp      — Scene (immutable after load): entities/cameras/events/
+                      bindings/attrs parsed from JSON, loadScene(), applyMovement
+  events.h/.cpp     — updateEvents: data-driven trigger/condition/action rules → Diff
+  input.h/.cpp      — InputFrame/Bindings/ResolvedActions, InputSource
+                      (BindingsInputSource holds a COPY of the bindings)
+  sim.h/.cpp        — SIM_DT, SimClock, copyable SimState, stepSim (one tick)
 
 src/levels/
   *.json            — canonical scene files (demo, controls, menu)
+
+tests/
+  *.cpp             — zero-dependency unit tests (make test-unit): json parser,
+                      event semantics, determinism replay, scene loading
 
 tools/
   imgdiff.c         — native pixel-diff tool for desktop/web parity checks
@@ -291,8 +367,16 @@ All test config is read via `getenv()` in C++. Platform differences are transpar
 | Key | Effect |
 |-----|--------|
 | `CV_TEST_FRAMES=N` | Render N frames then exit 0. Unset → run forever. |
-| `CV_FIXED_TIME=T` | Use constant `t = T` seconds every frame instead of wall clock. Makes output deterministic across runs and platforms. |
+| `CV_FIXED_TIME=T` | Pin the sim clock at `tick = round(T / SIM_DT)` and render at constant `t = T` every frame instead of wall clock. Makes output deterministic across runs and platforms. |
 | `CV_SCREENSHOT=1` | On the final test frame, capture the back buffer as a base64 PNG between `CV_SHOT_BEGIN` / `CV_SHOT_END` markers on stdout. |
+
+### Unit tests — `make test-unit`
+
+`tests/*.cpp` + `src/game/*.cpp` compile into `build/test_unit` — pure CPU, no
+GL/SDL, no window. Covers the JSON parser, event trigger/condition/action
+semantics, the determinism replay (identical tick-command scripts under
+different frame batchings must be bit-identical), and loading every scene in
+`src/levels/`. Runs in CI before the compile gate.
 
 ### Screenshot capture — `src/engine/screenshot.{h,cpp}`
 

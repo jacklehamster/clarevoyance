@@ -28,21 +28,31 @@ Requirements documents for the next major systems live in `docs/specs/`:
 
 ## Core Gameplay Loop
 
+The sim advances in fixed **60 Hz ticks** (`SIM_DT = 1/60 s`, `src/game/sim.h`);
+the engine loop runs an accumulator over wall time (see ARCHITECTURE.md,
+Fixed-Timestep Simulation Loop). Per rendered frame:
+
 ```
-1. Read player input
-2. Advance simulation by dt (deterministic — no wall-clock dependency)
-3. Detect collisions / trigger events
-4. Run clairvoyance lookahead (N seconds ahead of current sim time)
-5. Build Diff:
-     - upsert entities whose trajectory/animation changed
-     - upsert shim ghosts from lookahead result
-     - remove entities that left the scene
-6. renderer.applyDiff(diff)
-7. renderer.render(simTime)
+1. Engine translates SDL events → InputFrame (once per frame; game layer is SDL-free)
+2. accumulator += wall dt (capped);  while accumulator >= SIM_DT:
+     a. Resolve the tick-stamped input command → ResolvedActions (pure function;
+        pressed/released edges are consumed by the first tick, never repeated)
+     b. stepSim(scene, simState, actions, diff):
+          - applyMovement to controlled entities
+          - evaluate events (triggers/conditions/actions)
+          - upsert entities whose trajectory/animation changed, remove despawns
+          - simState.clock.tick++
+     c. accumulator -= SIM_DT
+3. (future) Run clairvoyance lookahead: copy SimState, step the copy N/SIM_DT
+   ticks, upsert shim ghosts from the result
+4. renderer.applyDiff(diff)
+5. renderer.render(clock.time() + accumulator)   ← continuous time, smooth motion
 ```
 
-Steps 1–5 are pure CPU simulation. Steps 6–7 are engine calls. The game layer never
-touches a VBO or uniform directly.
+Steps 1–3 are pure CPU simulation over an immutable `Scene` plus a copyable
+`SimState` (all runtime state: entities, attrs, flags, fired markers, clock).
+Steps 4–5 are engine calls. The game layer never touches a VBO or uniform
+directly — and never sees an SDL type.
 
 ---
 
@@ -219,7 +229,7 @@ no wall-clock, no `rand()` — so they fire deterministically.
 |-------------|---------------------------------|------------|
 | `start`     | —                               | first step (subject to condition) |
 | `proximity` | `entity`, `target`, `radius`    | distance(entity, target) ≤ radius |
-| `input`     | `action`, `edge`                | the abstract `action` shows `edge` this frame (`pressed`/`released`/`held`; default `pressed`) — see Controls / Input |
+| `input`     | `action`, `edge`                | the abstract `action` shows `edge` this tick (`pressed`/`released`/`held`; default `pressed`) — see Controls / Input |
 
 | Action       | Fields                                  | Effect |
 |--------------|-----------------------------------------|--------|
@@ -240,9 +250,11 @@ clairvoyance lookahead uses, so shim ghosts and scripted events share one determ
 ## Controls / Input
 
 Keyboard input is a small, device-agnostic layer (`src/game/input.{h,cpp}`) that sits between
-SDL and the game logic. It has three pieces: an **InputFrame** (raw per-frame key state), the
-**Bindings** (key → abstract action), and the **movement** pass that drives controlled entities.
-The engine wires it up each frame in scene mode; the events demo path is unaffected (no bindings).
+the engine and the game logic. It has three pieces: an **InputFrame** (raw per-frame key state),
+the **Bindings** (key → abstract action), and the **movement** pass that drives controlled
+entities (`applyMovement`, declared in `scene.h`, run per tick by `stepSim`). The game layer is
+**SDL-free**: the ENGINE builds the InputFrame from SDL events (`src/engine/sdl_input.{h,cpp}`,
+`buildInputFrame`) once per rendered frame; the events demo path is unaffected (no bindings).
 
 **Character/player movement is free — not grid-locked.** The 90° lock is a *camera* constraint
 (see [CLAUDE.md](CLAUDE.md)), not a movement one.
@@ -270,14 +282,19 @@ A scene may declare a `controls` block mapping key names to abstract action name
 ```
 
 Multiple keys may map to the same action (WASD *and* arrows above). Unbound keys contribute
-nothing. The bindings live on the `Scene`; the engine resolves the `InputFrame` through them
-into down/pressed/released **action** sets each frame.
+nothing. The bindings are parsed onto the `Scene`; the active input source
+(`BindingsInputSource`) holds a **copy** of them — so it stays valid across scene
+unload/hot-reload — and resolves each tick's `InputFrame` into down/pressed/released
+**action** sets via `ResolvedActions poll(const InputFrame&)`. Edges (pressed/released) are
+consumed by the first sim tick of the frame and never repeat on later ticks; held state
+persists. Resolution is a pure function — the per-tick input is effectively a tick-stamped
+command, ready for lockstep replay/networking.
 
 ### Entity attributes: `controlled` and `speed`
 
 Movement is driven by per-entity, game-side attributes — kept separate from the GPU `Instance`
-(which must stay a standard-layout block of floats). They live in an `EntityAttrs` store owned
-by the `EventSystem`, initialised from the scene:
+(which must stay a standard-layout block of floats). They live in an `EntityAttrs` store inside
+the copyable `SimState` (`src/game/sim.h`), initialised from the immutable scene:
 
 | Field        | Default | Meaning |
 |--------------|---------|---------|
@@ -300,9 +317,9 @@ The directional actions `move_north` (−Z), `move_south` (+Z), `move_west` (−
 follow the engine coordinate convention (+X east, +Z south, +Y up). Held directions sum into a
 world-space vector, normalised if non-zero (so diagonals aren't faster), then scaled by each
 controlled entity's `speed` and applied as **velocity** — using the same rebase-to-current-
-position + `motionStart = now` approach as `set_motion`. An upsert is emitted only when an
-entity's desired velocity actually differs from its current velocity, so a stationary or
-steady-moving entity produces no per-frame `Diff` churn.
+position + `motionStart = now` approach as `set_motion`, at the tick's sim time. An upsert is
+emitted only when an entity's desired velocity actually differs from its current velocity, so a
+stationary or steady-moving entity produces no per-tick `Diff` churn.
 
 ### `input` trigger
 
@@ -314,8 +331,8 @@ The `input` trigger fires when an abstract action shows a given edge this frame:
 ```
 
 `edge` is one of `pressed` / `released` / `held` (default `pressed`). The resolved action sets
-are threaded into `EventSystem::update`; the no-input overload (used by the events demo) simply
-passes empty action sets.
+are threaded into `updateEvents` via `stepSim` each tick; a scene without bindings (like the
+events demo) simply runs with empty action sets.
 
 ### Demo
 
