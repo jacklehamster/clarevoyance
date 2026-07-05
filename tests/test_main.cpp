@@ -5,12 +5,14 @@ int g_checks = 0;
 int g_failures = 0;
 
 void test_json();
+void test_serialize();
 void test_events();
 void test_determinism();
 void test_scene_load();
 
 int main() {
     test_json();
+    test_serialize();
     test_events();
     test_determinism();
     test_scene_load();

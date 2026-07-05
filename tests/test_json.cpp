@@ -63,6 +63,17 @@ void test_json() {
             CHECK(v.arr[0].string() == "\"\\/\n\t\r\b\f");
     }
 
+    // \uXXXX escapes: ASCII, a control char, and 2- / 3-byte UTF-8 encodings.
+    {
+        JsonValue v;
+        CHECK(parses("[\"\\u0041\\u0001\\u00e9\\u20ac\"]", v));
+        CHECK(v.isArray() && v.arr.size() == 1);
+        if (v.arr.size() == 1)
+            CHECK(v.arr[0].string() == "A\x01\xc3\xa9\xe2\x82\xac");  // A, SOH, e-acute, euro
+    }
+    CHECK_MSG(fails("[\"\\u12\"]"),   "truncated \\u escape");
+    CHECK_MSG(fails("[\"\\u12zx\"]"), "non-hex \\u escape");
+
     // Bare scalars are valid JSON documents.
     {
         JsonValue v;

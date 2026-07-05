@@ -23,45 +23,57 @@ raw frame numbers.
 
 ### Strict loader (shared engine/editor)
 
-1. **MUST** provide a strict-mode loader that errors (with file/line context) on:
-   unknown keys, wrong value types, duplicate entity/spawn ids, and unresolved entity
-   references in events/actions.
-2. **MUST** share one loader implementation between the engine and the editor — no
-   second parser that can drift. Strictness **SHOULD** be the only mode; if a
-   permissive mode is kept for migration, it **MUST** warn loudly and be temporary.
-3. **MUST** fix the current behavior where unknown trigger/action types silently fall
-   back to defaults — unknown types are errors.
+1. **[PARTLY IMPLEMENTED]** **MUST** provide a strict-mode loader that errors (with
+   context) on: unknown keys, wrong value types, duplicate entity/spawn ids, and
+   unresolved entity references in events/actions.
+   *Done:* duplicate entity ids, unresolved entity/archetype/clip references,
+   malformed vectors, unknown trigger/action/op/edge strings — all with contextual
+   messages (`events[3].actions[0]: unknown action type 'set_flg'`).
+   *Remaining:* unknown-key detection and exhaustive value-type checks.
+2. **[IMPLEMENTED]** **MUST** share one loader implementation between the engine and
+   the editor — `loadScene` (src/game/scene.cpp) is the only loader and strictness is
+   its only mode (no flag).
+3. **[IMPLEMENTED]** **MUST** fix the current behavior where unknown trigger/action
+   types silently fall back to defaults — unknown types are errors.
 
 ### Schema as the single format spec
 
-4. **MUST** check a JSON Schema file into the repo (e.g. `docs/specs/scene.schema.json`)
-   as the single normative definition of the scene format. Prose docs reference it;
-   they do not redefine it.
-5. **MUST** add a top-level `"version"` integer field to scene JSON. The loader
-   rejects versions it does not support; format changes bump the version and note the
+4. **[IMPLEMENTED]** **MUST** check a JSON Schema file into the repo — see
+   [`scene.schema.json`](scene.schema.json) (draft-07, format v1): the single
+   normative definition of the scene format. Prose docs reference it; they do not
+   redefine it.
+5. **[IMPLEMENTED]** **MUST** add a top-level `"version"` integer field to scene
+   JSON. The loader warns (stderr) when it is missing and rejects versions newer
+   than it supports (currently 1); format changes bump the version and note the
    migration.
 6. **SHOULD** validate all checked-in scenes against the schema in CI / `make test`.
+   (`make test-unit` loads every scene through the strict loader; JSON-Schema
+   validation in CI is still open.)
 
 ### Serializer (round-trip)
 
-7. **MUST** implement a JSON writer (there is currently a parser only) able to emit
-   any loaded scene.
-8. **MUST** round-trip losslessly: load → save produces semantically identical JSON,
-   preserving key order and array order, so diffs stay reviewable and hand edits
-   survive an editor pass.
+7. **[IMPLEMENTED]** **MUST** implement a JSON writer — `cv::serialize(JsonValue,
+   indent)` in src/game/json.h emits any parsed document.
+8. **[IMPLEMENTED]** **MUST** round-trip losslessly: objects are insertion-ordered,
+   so parse → serialize preserves key order and array order (verified byte-for-byte
+   in tests/test_serialize.cpp); numbers use the shortest representation that parses
+   back to the identical double.
 9. **MUST NOT** serialize runtime state (e.g. event `fired`) into scene files — scenes
    are immutable definitions (see SCENE_COORDINATOR / SHIM_SYSTEM state split).
+   (Holds by construction: runtime state lives in `SimState`, never in scene JSON.)
 
 ### Archetypes and named animation clips
 
-10. **MUST** support entity archetypes/prefabs: a named template (sheet, scale,
-    billboard, speed, default clip) that entity instances reference and override, e.g.
-    `{ "id": "guard_1", "archetype": "road_guard", "pos": [...] }`. Archetypes live in
-    shared files referenced by scenes.
-11. **MUST** support named animation clips (`"walk"`, `"idle"`, `"windup"`) defined
-    once per archetype/sheet, mapping to `first/count/fps`. `set_anim` and entity
-    definitions **SHOULD** accept clip names; raw frame indices remain valid but are
-    discouraged in authored content. The editor places clips, never frame numbers.
+10. **[IMPLEMENTED]** **MUST** support entity archetypes/prefabs: a named template
+    (sheet, scale, billboard, speed, default clip) that entity instances reference
+    and override, e.g. `{ "id": "guard_1", "archetype": "road_guard", "pos": [...] }`.
+    Declared in the scene's top-level `"archetypes"` object; sharing archetype files
+    across scenes is still open.
+11. **[IMPLEMENTED]** **MUST** support named animation clips (`"walk"`, `"idle"`,
+    `"windup"`) defined once per archetype, mapping to `first/count/fps`. `set_anim`
+    (via `"clip"`) and entity definitions (string `"anim"`) accept clip names; raw
+    frame indices remain valid but are discouraged in authored content. The editor
+    places clips, never frame numbers.
 
 ### Asset paths and canonical directory
 

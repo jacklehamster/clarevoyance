@@ -1,12 +1,15 @@
-// json.h — a minimal, dependency-free JSON parser for the game data layer.
+// json.h — a minimal, dependency-free JSON parser + serializer for the game
+// data layer.
 //
-// Scope: just enough JSON to load scene/event data files. Supports objects,
-// arrays, strings, numbers, true/false/null. Not a general-purpose library —
-// no streaming, no unicode escapes beyond the common ones, no comments.
+// Scope: just enough JSON to load and write scene/event data files. Supports
+// objects, arrays, strings, numbers, true/false/null. Not a general-purpose
+// library — no streaming, no unicode escapes beyond the common ones, no
+// comments.
 //
 // Header-only. Parsing is deterministic and allocation-simple; object members
-// keep insertion order (a small vector, not a hash map) which keeps data-file
-// round-trips predictable.
+// keep insertion order (a small vector, not a hash map) so parse → serialize
+// round-trips preserve key order — hand edits survive an editor pass and
+// diffs stay reviewable (MAP_EDITOR spec).
 #pragma once
 
 #include <string>
@@ -161,6 +164,32 @@ private:
                     case 'r':  s += '\r'; break;
                     case 'b':  s += '\b'; break;
                     case 'f':  s += '\f'; break;
+                    case 'u': {
+                        // \uXXXX — BMP code point, encoded as UTF-8. No
+                        // surrogate-pair handling (scene data is ASCII-centric;
+                        // the serializer only emits \u00XX for control chars).
+                        if (pos_ + 4 > text_.size()) return fail("unterminated \\u escape");
+                        unsigned cp = 0;
+                        for (int k = 0; k < 4; ++k) {
+                            char h = text_[pos_++];
+                            cp <<= 4;
+                            if      (h >= '0' && h <= '9') cp |= static_cast<unsigned>(h - '0');
+                            else if (h >= 'a' && h <= 'f') cp |= static_cast<unsigned>(h - 'a' + 10);
+                            else if (h >= 'A' && h <= 'F') cp |= static_cast<unsigned>(h - 'A' + 10);
+                            else return fail("invalid \\u escape");
+                        }
+                        if (cp < 0x80) {
+                            s += static_cast<char>(cp);
+                        } else if (cp < 0x800) {
+                            s += static_cast<char>(0xC0 | (cp >> 6));
+                            s += static_cast<char>(0x80 | (cp & 0x3F));
+                        } else {
+                            s += static_cast<char>(0xE0 | (cp >> 12));
+                            s += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                            s += static_cast<char>(0x80 | (cp & 0x3F));
+                        }
+                        break;
+                    }
                     default:   return fail("unsupported escape sequence");
                 }
             } else {
@@ -221,6 +250,111 @@ private:
         return true;
     }
 };
+
+// --- Serializer ----------------------------------------------------------------
+
+namespace detail {
+
+// Append `s` as a quoted JSON string with proper escaping.
+inline void appendEscaped(std::string& out, const std::string& s) {
+    out += '"';
+    for (char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\t': out += "\\t";  break;
+            case '\r': out += "\\r";  break;
+            case '\b': out += "\\b";  break;
+            case '\f': out += "\\f";  break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x",
+                                  static_cast<unsigned char>(c));
+                    out += buf;
+                } else {
+                    out += c;
+                }
+        }
+    }
+    out += '"';
+}
+
+// Shortest decimal representation that round-trips back to the same double:
+// try increasing %g precision until strtod recovers the value exactly.
+inline void appendNumber(std::string& out, double v) {
+    if (v != v || v > 1.7976931348623157e308 || v < -1.7976931348623157e308) {
+        out += "0";   // JSON has no NaN/Infinity; scenes never contain them
+        return;
+    }
+    char buf[32];
+    // Integral values in the exactly-representable range print as plain
+    // integers ("250", not "2.5e+02").
+    if (v == static_cast<double>(static_cast<long long>(v))
+        && v >= -9007199254740992.0 && v <= 9007199254740992.0) {
+        std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(v));
+        out += buf;
+        return;
+    }
+    for (int prec = 1; prec <= 17; ++prec) {
+        std::snprintf(buf, sizeof(buf), "%.*g", prec, v);
+        if (std::strtod(buf, nullptr) == v) break;
+    }
+    out += buf;
+}
+
+inline void serializeValue(const JsonValue& v, std::string& out,
+                           int indent, int depth) {
+    const std::string pad(static_cast<size_t>(indent) * (depth + 1), ' ');
+    const std::string closePad(static_cast<size_t>(indent) * depth, ' ');
+    switch (v.type) {
+        case JsonValue::Type::Null:   out += "null"; break;
+        case JsonValue::Type::Bool:   out += v.boolVal ? "true" : "false"; break;
+        case JsonValue::Type::Number: appendNumber(out, v.numVal); break;
+        case JsonValue::Type::String: appendEscaped(out, v.strVal); break;
+
+        case JsonValue::Type::Array:
+            if (v.arr.empty()) { out += "[]"; break; }
+            out += "[\n";
+            for (size_t i = 0; i < v.arr.size(); ++i) {
+                out += pad;
+                serializeValue(v.arr[i], out, indent, depth + 1);
+                if (i + 1 < v.arr.size()) out += ',';
+                out += '\n';
+            }
+            out += closePad;
+            out += ']';
+            break;
+
+        case JsonValue::Type::Object:
+            if (v.obj.empty()) { out += "{}"; break; }
+            out += "{\n";
+            for (size_t i = 0; i < v.obj.size(); ++i) {
+                out += pad;
+                appendEscaped(out, v.obj[i].first);
+                out += ": ";
+                serializeValue(v.obj[i].second, out, indent, depth + 1);
+                if (i + 1 < v.obj.size()) out += ',';
+                out += '\n';
+            }
+            out += closePad;
+            out += '}';
+            break;
+    }
+}
+
+} // namespace detail
+
+// Pretty-print a JsonValue. Object keys keep their insertion order (see
+// JsonValue::obj), so parse → serialize preserves the input's key order.
+// Numbers use the shortest representation that parses back to the same double,
+// so serialize → parse is lossless. Output has no trailing newline.
+inline std::string serialize(const JsonValue& v, int indent = 2) {
+    std::string out;
+    detail::serializeValue(v, out, indent, 0);
+    return out;
+}
 
 // Convenience: read a whole file into a string. Returns false if unreadable.
 inline bool readFile(const char* path, std::string& out) {
