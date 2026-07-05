@@ -187,16 +187,25 @@ sending Mochi leaping away via `set_motion`.
 
 ```json
 {
+  "version": 1,
   "sheets": [ { "path": "art/penguin.png", "cols": 16, "rows": 1 } ],
   "cameras": [
     { "projection": "perspective", "position": [6, 7, 16], "target": [6, 0, 5] }
   ],
   "activeCamera": 0,
+  "archetypes": {
+    "penguin": {
+      "scale": [0.9, 0.9], "billboard": true, "sheet": 0,
+      "clips": {
+        "idle": { "first": 7, "count": 1, "fps": 0 },
+        "walk": { "first": 0, "count": 5, "fps": 10 }
+      }
+    }
+  },
   "entities": [
-    { "id": "player", "pos": [0, 0.45, 5], "scale": [0.9, 0.9], "billboard": true,
-      "vel": [1.2, 0, 0], "anim": { "first": 0, "count": 5, "fps": 10 } },
-    { "id": "mochi",  "pos": [11, 0.45, 5], "scale": [0.9, 0.9], "billboard": true,
-      "anim": { "first": 7, "count": 1, "fps": 0 } }
+    { "id": "player", "archetype": "penguin", "pos": [0, 0.45, 5],
+      "vel": [1.2, 0, 0], "anim": "walk" },
+    { "id": "mochi",  "archetype": "penguin", "pos": [11, 0.45, 5], "anim": "idle" }
   ],
   "events": [ /* see below */ ]
 }
@@ -213,6 +222,24 @@ Entities are referenced by string `id` in the data file; the loader assigns nume
 `tint` (`[r, g, b, a]` multiplier — alpha < 1 renders in the translucent pass),
 `rotation` and `pitch` (non-billboard orientation, radians — see ARCHITECTURE.md;
 pitch −π/2 lies a quad flat as a floor tile).
+
+### Archetypes and named animation clips
+
+An **archetype** is a named entity template declared in the top-level `"archetypes"`
+object. Its fields (`scale`, `billboard`, `sheet`, `speed`, ... — any entity field)
+apply as *defaults* to every entity that references it via `"archetype"`; fields the
+entity sets itself override the archetype's, key by key. An archetype's `"clips"`
+map names animation ranges (`"walk"`, `"idle"`, `"windup"`) so authored data says
+*what plays*, never raw frame numbers:
+
+- an entity's `"anim"` may be a **string** — a clip name resolved through its
+  archetype — or the raw inline `{ "first", "count", "fps" }` object (back-compat);
+- the `set_anim` action may give `"clip": "surprised"` instead of `first/count/fps`
+  (the clip is resolved through the *target entity's* archetype at runtime).
+
+The loader keeps the parsed archetypes (name → clips) and the entity → archetype
+mapping on the `Scene`; `demo.json` is the reference example. Raw frame indices
+remain valid but are discouraged in authored content (MAP_EDITOR spec).
 
 ### Event / Condition / Action system
 
@@ -265,7 +292,7 @@ composition (recursive to any depth):
 | `dialogue`   | `id`                                    | emits a `CV_DIALOGUE: <id>` line (UI sink TBD) |
 | `set_flag`   | `flag`, `value`                         | sets a flag (boolean or number) |
 | `add_flag`   | `flag`, `value`                         | adds `value` to a flag (counters — a missing flag starts at 0) |
-| `set_anim`   | `entity`, `first`, `count`, `fps`       | swaps an entity's animation (emits an upsert `Diff`) |
+| `set_anim`   | `entity`, `clip` *or* `first`, `count`, `fps` | swaps an entity's animation (emits an upsert `Diff`); `clip` names an archetype clip |
 | `set_motion` | `entity`, `vel`, `accel`                | rebases motion from the entity's current position and gives it a new velocity/acceleration (e.g. an enemy fleeing or a thrown arc) |
 | `remove`     | `entity`                                | despawns an entity (emits a removal `Diff`) |
 | `toggle_controlled` | `entity`                         | flips the entity's `controlled` attribute (adds/removes it from the controlled set) |

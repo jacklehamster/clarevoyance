@@ -3,6 +3,7 @@
 #include "test_harness.h"
 
 #include "scene.h"
+#include "sim.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -141,10 +142,78 @@ static void test_scene_conditions() {
     }
 }
 
+// Archetypes: template fields apply as defaults, entity fields override, and
+// named clips resolve for both string "anim" fields and set_anim actions.
+static void test_scene_archetypes() {
+    Scene scene;
+    std::string err;
+    bool ok = loadFromString(R"({
+        "archetypes": {
+            "penguin": {
+                "scale": [0.9, 0.9], "billboard": true, "sheet": 0, "speed": 2.5,
+                "clips": {
+                    "idle":      { "first": 0, "count": 1, "fps": 0 },
+                    "walk":      { "first": 0, "count": 5, "fps": 10 },
+                    "surprised": { "first": 6, "count": 1, "fps": 0 }
+                }
+            }
+        },
+        "entities": [
+            { "id": "a", "archetype": "penguin", "pos": [1, 0, 0], "anim": "walk" },
+            { "id": "b", "archetype": "penguin", "pos": [2, 0, 0],
+              "scale": [2, 2], "speed": 4.0,
+              "anim": { "first": 3, "count": 2, "fps": 5 } },
+            { "id": "plain", "pos": [3, 0, 0] }
+        ],
+        "events": [
+            { "trigger": { "type": "start" },
+              "actions": [ { "type": "set_anim", "entity": "a", "clip": "surprised" } ] }
+        ]
+    })", scene, err);
+    CHECK_MSG(ok, err.c_str());
+
+    // Archetype parsed onto the scene, entities mapped to it.
+    CHECK(scene.archetypes.count("penguin") == 1);
+    CHECK(scene.archetypes["penguin"].clips.size() == 3);
+    CHECK(scene.archetypeOf.count(scene.idOf("a")) == 1);
+    CHECK(scene.archetypeOf.count(scene.idOf("plain")) == 0);
+
+    // Defaults from the archetype...
+    const Instance& a = scene.initialState.instances[scene.idOf("a")];
+    CHECK(a.scale.x == 0.9f && a.scale.y == 0.9f);
+    CHECK(a.billboard == 1.0f);
+    CHECK(scene.attrs[scene.idOf("a")].speed == 2.5f);
+    // ...string anim resolves the archetype clip
+    CHECK(a.anim.x == 0.0f && a.anim.y == 5.0f && a.anim.z == 10.0f);
+
+    // Entity fields override archetype defaults (scale, speed, inline anim).
+    const Instance& b = scene.initialState.instances[scene.idOf("b")];
+    CHECK(b.scale.x == 2.0f && b.scale.y == 2.0f);
+    CHECK(b.billboard == 1.0f);                        // still from the archetype
+    CHECK(scene.attrs[scene.idOf("b")].speed == 4.0f);
+    CHECK(b.anim.x == 3.0f && b.anim.y == 2.0f && b.anim.z == 5.0f);
+
+    // set_anim with "clip" resolves through the target's archetype at runtime.
+    CHECK(scene.events.size() == 1 && scene.events[0].actions.size() == 1);
+    CHECK(scene.events[0].actions[0].clip == "surprised");
+    SimState st = makeSimState(scene);
+    Diff diff;
+    stepSim(scene, st, ResolvedActions{}, diff);
+    const Instance& aAfter = st.entities[scene.idOf("a")];
+    CHECK(aAfter.anim.x == 6.0f && aAfter.anim.y == 1.0f && aAfter.anim.z == 0.0f);
+
+    // clipOf helper: hit and miss.
+    const Clip* walk = scene.clipOf(scene.idOf("a"), "walk");
+    CHECK(walk && walk->first == 0 && walk->count == 5 && walk->fps == 10.0f);
+    CHECK(scene.clipOf(scene.idOf("plain"), "walk") == nullptr);
+    CHECK(scene.clipOf(scene.idOf("a"), "nope") == nullptr);
+}
+
 void test_scene_load() {
     test_scene_sheets();
     test_scene_orientation();
     test_scene_conditions();
+    test_scene_archetypes();
     const char* dir = "src/levels";
     CHECK_MSG(fs::is_directory(dir), "run from the repo root");
     if (!fs::is_directory(dir)) return;

@@ -66,7 +66,17 @@ static void runActions(const Scene& scene, SimState& state, float now,
                 if (id == 0) break;
                 auto it = state.entities.find(id);
                 if (it == state.entities.end()) break;
-                setAnimation(it->second, a.first, a.count, a.fps, 0.0f);
+                int first = a.first, count = a.count;
+                float fps = a.fps;
+                if (!a.clip.empty()) {
+                    // Named clip: resolve through the target's archetype.
+                    // loadScene validates data-file clip references, so a miss
+                    // here (code-built scene) just keeps the raw fields.
+                    if (const Clip* clip = scene.clipOf(id, a.clip)) {
+                        first = clip->first; count = clip->count; fps = clip->fps;
+                    }
+                }
+                setAnimation(it->second, first, count, fps, 0.0f);
                 out.upserts.emplace_back(id, it->second);
                 break;
             }

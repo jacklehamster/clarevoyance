@@ -38,9 +38,48 @@ Camera readCamera(const JsonValue& c) {
     return cam;
 }
 
+// Parse an archetype's "clips" map: clip name → {first, count, fps}.
+Archetype readArchetype(const JsonValue& a) {
+    Archetype arch;
+    if (const JsonValue* clips = a.find("clips")) {
+        if (clips->isObject()) {
+            for (const auto& kv : clips->obj) {
+                Clip clip;
+                if (const JsonValue* f = kv.second.find("first"))
+                    clip.first = static_cast<int>(f->number());
+                if (const JsonValue* c = kv.second.find("count"))
+                    clip.count = static_cast<int>(c->number(1));
+                if (const JsonValue* fps = kv.second.find("fps"))
+                    clip.fps = static_cast<float>(fps->number());
+                arch.clips[kv.first] = clip;
+            }
+        }
+    }
+    return arch;
+}
+
+// Merge an entity JSON object over its archetype's fields: archetype fields
+// apply as defaults, entity fields override key-by-key. "clips" is archetype
+// metadata (not an entity field) and is skipped.
+JsonValue mergeWithArchetype(const JsonValue& archetype, const JsonValue& entity) {
+    JsonValue merged;
+    merged.type = JsonValue::Type::Object;
+    for (const auto& kv : archetype.obj)
+        if (kv.first != "clips")
+            merged.obj.emplace_back(kv.first, kv.second);
+    for (const auto& kv : entity.obj) {
+        bool replaced = false;
+        for (auto& mkv : merged.obj)
+            if (mkv.first == kv.first) { mkv.second = kv.second; replaced = true; break; }
+        if (!replaced) merged.obj.emplace_back(kv.first, kv.second);
+    }
+    return merged;
+}
+
 // Build an entity's renderable Instance and fill its game-side attributes
-// (controlled/speed) from the same JSON object.
-Instance readEntity(const JsonValue& e, EntityAttrs& attrs) {
+// (controlled/speed) from the same JSON object. `arch` (may be null) supplies
+// the named clips a string-valued "anim" field resolves against.
+Instance readEntity(const JsonValue& e, EntityAttrs& attrs, const Archetype* arch) {
     Vec3 pos   = readVec3(e.find("pos"), {0, 0, 0});
     Vec2 scale = readVec2(e.find("scale"), {1, 1});
     bool bb = true;
@@ -66,12 +105,23 @@ Instance readEntity(const JsonValue& e, EntityAttrs& attrs) {
     // Optional RGBA tint multiplier; alpha < 1 renders in the translucent pass.
     inst.tint = readVec4(e.find("tint"), inst.tint);
 
+    // Animation: either an inline object {first, count, fps, start} or a string
+    // naming a clip from the entity's archetype ("anim": "walk").
     if (const JsonValue* a = e.find("anim")) {
-        int   first = static_cast<int>(a->find("first") ? a->find("first")->number() : 0);
-        int   count = static_cast<int>(a->find("count") ? a->find("count")->number() : 1);
-        float fps   = a->find("fps") ? static_cast<float>(a->find("fps")->number()) : 0.0f;
-        float start = a->find("start") ? static_cast<float>(a->find("start")->number()) : 0.0f;
-        setAnimation(inst, first, count, fps, start);
+        if (a->type == JsonValue::Type::String) {
+            const Clip* clip = nullptr;
+            if (arch) {
+                auto it = arch->clips.find(a->strVal);
+                if (it != arch->clips.end()) clip = &it->second;
+            }
+            if (clip) setAnimation(inst, clip->first, clip->count, clip->fps, 0.0f);
+        } else {
+            int   first = static_cast<int>(a->find("first") ? a->find("first")->number() : 0);
+            int   count = static_cast<int>(a->find("count") ? a->find("count")->number() : 1);
+            float fps   = a->find("fps") ? static_cast<float>(a->find("fps")->number()) : 0.0f;
+            float start = a->find("start") ? static_cast<float>(a->find("start")->number()) : 0.0f;
+            setAnimation(inst, first, count, fps, start);
+        }
     }
 
     // Game-side attributes (optional): movement input applies to any entity with
@@ -155,6 +205,9 @@ Action readAction(const JsonValue& a) {
     } else if (type == "set_anim") {
         ac.type   = Action::Type::SetAnim;
         ac.entity = a.find("entity") ? a.find("entity")->string() : "";
+        // Either a named clip (resolved through the target entity's archetype
+        // at runtime) or raw first/count/fps.
+        ac.clip   = a.find("clip") ? a.find("clip")->string() : "";
         ac.first  = static_cast<int>(a.find("first") ? a.find("first")->number() : 0);
         ac.count  = static_cast<int>(a.find("count") ? a.find("count")->number() : 1);
         ac.fps    = a.find("fps") ? static_cast<float>(a.find("fps")->number()) : 0.0f;
@@ -220,7 +273,22 @@ bool loadScene(const char* path, Scene& out, std::string& error) {
     if (const JsonValue* ac = root.find("activeCamera"))
         out.initialState.activeCamera = static_cast<int>(ac->number(0));
 
-    // Entities — assign numeric ids starting at 1, record name → id.
+    // Archetypes — named entity templates with named animation clips. Kept as
+    // raw JSON here (for default merging) and parsed onto the Scene (for
+    // runtime clip resolution).
+    std::unordered_map<std::string, const JsonValue*> archetypeJson;
+    if (const JsonValue* archs = root.find("archetypes")) {
+        if (archs->isObject()) {
+            for (const auto& kv : archs->obj) {
+                out.archetypes[kv.first] = readArchetype(kv.second);
+                archetypeJson[kv.first]  = &kv.second;
+            }
+        }
+    }
+
+    // Entities — assign numeric ids starting at 1, record name → id. An entity
+    // with an "archetype" field takes the archetype's fields as defaults and
+    // overrides them key-by-key.
     EntityId nextId = 1;
     if (const JsonValue* ents = root.find("entities")) {
         if (ents->isArray()) {
@@ -228,8 +296,22 @@ bool loadScene(const char* path, Scene& out, std::string& error) {
                 std::string name = e.find("id") ? e.find("id")->string() : "";
                 EntityId id = nextId++;
                 if (!name.empty()) out.nameToId[name] = id;
+
+                const JsonValue* merged = &e;
+                JsonValue mergedStorage;
+                const Archetype* arch = nullptr;
+                if (const JsonValue* an = e.find("archetype")) {
+                    auto aj = archetypeJson.find(an->string());
+                    if (aj != archetypeJson.end()) {
+                        mergedStorage = mergeWithArchetype(*aj->second, e);
+                        merged = &mergedStorage;
+                        arch = &out.archetypes[an->string()];
+                        out.archetypeOf[id] = an->string();
+                    }
+                }
+
                 EntityAttrs attrs;
-                out.initialState.instances[id] = readEntity(e, attrs);
+                out.initialState.instances[id] = readEntity(*merged, attrs, arch);
                 out.attrs[id] = attrs;
             }
         }

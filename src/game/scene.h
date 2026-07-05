@@ -72,6 +72,8 @@ struct Action {
                             // (JSON bools become 0/1; set_controlled: nonzero = true)
 
     std::string entity;     // set_anim / set_motion / remove / *_controlled: target
+    std::string clip;       // set_anim: named clip (resolved via the target's
+                            // archetype at runtime; empty → use first/count/fps)
     int   first = 0;        // set_anim: first frame
     int   count = 1;        // set_anim: frame count
     float fps   = 0.0f;     // set_anim: frames per second
@@ -85,6 +87,21 @@ struct Event {
     Condition condition;
     std::vector<Action> actions;
     bool once = true;       // fire at most once (fired markers live in SimState)
+};
+
+// --- Archetypes and named animation clips ------------------------------------
+// An archetype is a named entity template: its JSON fields (scale, billboard,
+// sheet, speed, ...) apply as defaults to every entity that references it, and
+// its "clips" map names animation ranges so data says "walk", not frame numbers.
+
+struct Clip {
+    int   first = 0;    // first frame index in the sheet
+    int   count = 1;    // frame count
+    float fps   = 0.0f; // frames per second (0 = static frame)
+};
+
+struct Archetype {
+    std::unordered_map<std::string, Clip> clips;  // clip name → frame range
 };
 
 // Sprite-sheet description pulled from the scene file. Each sheet is loaded
@@ -104,11 +121,26 @@ struct Scene {
     Bindings bindings;                       // key name → abstract action ("controls")
     std::unordered_map<EntityId, EntityAttrs> attrs;  // per-entity game-side attributes
 
+    std::unordered_map<std::string, Archetype> archetypes;   // name → template
+    std::unordered_map<EntityId, std::string>  archetypeOf;  // entity → archetype name
+
     // Resolve a data-file entity name to its numeric id. Returns 0 if unknown
     // (0 is never assigned to a real entity — ids start at 1).
     EntityId idOf(const std::string& name) const {
         auto it = nameToId.find(name);
         return it == nameToId.end() ? 0 : it->second;
+    }
+
+    // Resolve a named clip through an entity's archetype. Returns nullptr when
+    // the entity has no archetype or the archetype lacks that clip. (loadScene
+    // validates clip references in data, so this is for runtime lookups.)
+    const Clip* clipOf(EntityId id, const std::string& clip) const {
+        auto an = archetypeOf.find(id);
+        if (an == archetypeOf.end()) return nullptr;
+        auto ar = archetypes.find(an->second);
+        if (ar == archetypes.end()) return nullptr;
+        auto cl = ar->second.clips.find(clip);
+        return cl == ar->second.clips.end() ? nullptr : &cl->second;
     }
 };
 
