@@ -7,6 +7,11 @@
 //
 // This is the "script layer" seam: nothing here calls GL. It builds engine
 // data structures (WorldState / Instance / Camera) from declarative data.
+//
+// A Scene is DATA: after loadScene() it is immutable. All runtime mutation
+// (entity motion, flags, event fired markers, the sim clock) lives in the
+// copyable SimState (sim.h), never in the Scene itself — required so the
+// shim lookahead can fork the sim without touching the scene.
 #pragma once
 
 #include <string>
@@ -69,8 +74,7 @@ struct Event {
     Trigger trigger;
     Condition condition;
     std::vector<Action> actions;
-    bool once = true;       // fire at most once
-    bool fired = false;     // runtime guard
+    bool once = true;       // fire at most once (fired markers live in SimState)
 };
 
 // Sprite-sheet description pulled from the scene file (the renderer needs it at init).

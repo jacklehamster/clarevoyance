@@ -1,27 +1,24 @@
-// events.cpp — EventSystem implementation.
+// events.cpp — event/condition/action evaluation over (const Scene, SimState).
 #include "events.h"
-#include "scene.h"
 
 #include <cstdio>
 #include <cmath>
 
 namespace cv {
 
-void EventSystem::init(const Scene& scene) {
-    flags_.clear();
-    firstStep_ = true;
-    entities_ = scene.initialState.instances;  // working copy for animation swaps
-    attrs_    = scene.attrs;                    // working copy of controlled/speed
+static bool flagValue(const SimState& state, const std::string& name) {
+    auto it = state.flags.find(name);
+    return it != state.flags.end() && it->second;
 }
 
-bool EventSystem::conditionPasses(const Condition& c) const {
+static bool conditionPasses(const SimState& state, const Condition& c) {
     if (!c.present) return true;
-    return flag(c.flag) == c.value;
+    return flagValue(state, c.flag) == c.value;
 }
 
-void EventSystem::runActions(const Scene& scene, float now,
-                             const std::unordered_map<EntityId, Vec3>& positions,
-                             const std::vector<Action>& actions, Diff& out) {
+static void runActions(const Scene& scene, SimState& state, float now,
+                       const std::unordered_map<EntityId, Vec3>& positions,
+                       const std::vector<Action>& actions, Diff& out) {
     for (const Action& a : actions) {
         switch (a.type) {
             case Action::Type::Dialogue:
@@ -30,14 +27,14 @@ void EventSystem::runActions(const Scene& scene, float now,
                 break;
 
             case Action::Type::SetFlag:
-                flags_[a.flag] = a.value;
+                state.flags[a.flag] = a.value;
                 break;
 
             case Action::Type::SetAnim: {
                 EntityId id = scene.idOf(a.entity);
                 if (id == 0) break;
-                auto it = entities_.find(id);
-                if (it == entities_.end()) break;
+                auto it = state.entities.find(id);
+                if (it == state.entities.end()) break;
                 setAnimation(it->second, a.first, a.count, a.fps, 0.0f);
                 out.upserts.emplace_back(id, it->second);
                 break;
@@ -46,8 +43,8 @@ void EventSystem::runActions(const Scene& scene, float now,
             case Action::Type::SetMotion: {
                 EntityId id = scene.idOf(a.entity);
                 if (id == 0) break;
-                auto it = entities_.find(id);
-                if (it == entities_.end()) break;
+                auto it = state.entities.find(id);
+                if (it == state.entities.end()) break;
                 // Rebase the motion origin to the entity's current position so it
                 // continues from where it is rather than teleporting.
                 auto p = positions.find(id);
@@ -60,8 +57,8 @@ void EventSystem::runActions(const Scene& scene, float now,
             case Action::Type::Remove: {
                 EntityId id = scene.idOf(a.entity);
                 if (id == 0) break;
-                entities_.erase(id);
-                attrs_.erase(id);
+                state.entities.erase(id);
+                state.attrs.erase(id);
                 out.removals.push_back(id);
                 break;
             }
@@ -69,31 +66,40 @@ void EventSystem::runActions(const Scene& scene, float now,
             case Action::Type::ToggleControlled: {
                 EntityId id = scene.idOf(a.entity);
                 if (id == 0) break;
-                attrs_[id].controlled = !attrs_[id].controlled;
+                state.attrs[id].controlled = !state.attrs[id].controlled;
                 break;
             }
 
             case Action::Type::SetControlled: {
                 EntityId id = scene.idOf(a.entity);
                 if (id == 0) break;
-                attrs_[id].controlled = a.value;
+                state.attrs[id].controlled = a.value;
                 break;
             }
         }
     }
 }
 
-void EventSystem::update(Scene& scene,
-                         float now,
-                         const std::unordered_map<EntityId, Vec3>& positions,
-                         const ResolvedActions& actions,
-                         Diff& out) {
-    const bool isFirstStep = firstStep_;
-    firstStep_ = false;
+void updateEvents(const Scene& scene,
+                  SimState& state,
+                  double now,
+                  const std::unordered_map<EntityId, Vec3>& positions,
+                  const ResolvedActions& actions,
+                  Diff& out) {
+    const bool isFirstStep = !state.started;
+    state.started = true;
 
-    for (Event& e : scene.events) {
-        if (e.fired && e.once) continue;
-        if (!conditionPasses(e.condition)) continue;
+    // Defensive: keep the fired markers sized to the scene's event list
+    // (makeSimState sizes them; this guards a mismatched state/scene pair).
+    if (state.fired.size() != scene.events.size())
+        state.fired.assign(scene.events.size(), 0);
+
+    const float nowF = static_cast<float>(now);
+
+    for (size_t i = 0; i < scene.events.size(); ++i) {
+        const Event& e = scene.events[i];
+        if (state.fired[i] && e.once) continue;
+        if (!conditionPasses(state, e.condition)) continue;
 
         bool triggered = false;
         switch (e.trigger.type) {
@@ -117,7 +123,7 @@ void EventSystem::update(Scene& scene,
 
             case Trigger::Type::Input: {
                 // Fire when the named abstract action shows the requested edge
-                // this frame (pressed/released), or is currently held.
+                // this tick (pressed/released), or is currently held.
                 const std::string& act = e.trigger.action;
                 switch (e.trigger.edge) {
                     case Trigger::Edge::Pressed:
@@ -132,8 +138,8 @@ void EventSystem::update(Scene& scene,
         }
 
         if (triggered) {
-            runActions(scene, now, positions, e.actions, out);
-            e.fired = true;
+            runActions(scene, state, nowF, positions, e.actions, out);
+            state.fired[i] = 1;
         }
     }
 }

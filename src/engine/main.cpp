@@ -35,13 +35,6 @@
 
 using namespace cv;
 
-// Evaluate an instance's motion formula on the CPU (mirror of the GPU path):
-//   pos(t) = pos + vel*(t-start) + 0.5*accel*(t-start)^2
-static Vec3 positionAt(const Instance& inst, float t) {
-    float dt = t - inst.motionStart;
-    return inst.pos + inst.vel * dt + inst.accel * (0.5f * dt * dt);
-}
-
 // --- Sprite sheet -----------------------------------------------------------
 // penguin.png: 4096×256, 16 cols × 1 row of 256×256 cells.
 //   Walk(0-4)  Chat(4-5)  Surprised(6)  Confused(7)  Angry(8)
@@ -117,10 +110,11 @@ struct LoopContext {
     bool        doScreenshot;
     int         framesRendered;
     bool        testDone;      // one-shot guard: exit(0) queues more callbacks on WASM
-    // scene mode (data-driven script layer); null in the stress-test demo
+    // scene mode (data-driven script layer); null in the stress-test demo.
+    // The Scene is immutable after load (hot-reload replaces the whole object);
+    // ALL runtime mutation lives in the copyable SimState.
     Scene*       scene;
-    EventSystem* events;
-    std::unordered_map<EntityId, Instance>* entities;  // working copy for sim
+    SimState*    sim;
     InputSource* inputSrc;   // pluggable input: bindings, replay, null (cutscenes)
     InputFrame  prevInput = {};  // last frame's key state (edge detection across frames)
     // fixed-timestep sim: wall time fills an accumulator; the sim advances in
@@ -166,40 +160,31 @@ static void maybeHotReloadScene(LoopContext* ctx) {
 
     *ctx->scene = std::move(fresh);
     ctx->renderer->applyState(ctx->scene->initialState);
-    ctx->events->init(*ctx->scene);
-    // ctx->entities aliases the event system's working copy — same map object,
-    // freshly refilled by init(), so the pointer stays valid.
+    *ctx->sim = makeSimState(*ctx->scene);  // fresh runtime state, tick 0
     delete ctx->inputSrc;
     ctx->inputSrc = ctx->scene->bindings.empty()
         ? static_cast<InputSource*>(new NullInputSource())
         : new BindingsInputSource(ctx->scene->bindings);
     ctx->prevInput = InputFrame{};
+    ctx->pending   = InputFrame{};
     SDL_Log("Scene hot-reloaded: %s", ctx->scenePath.c_str());
 }
 #endif
 
-// One simulation tick for the scene mode: resolve inputs, apply movement,
-// evaluate events, apply the resulting Diff. Pure CPU — sim time comes from
-// the tick clock, never the wall clock. `actions` is the tick's resolved input
-// command (edges appear on exactly one tick).
-static void stepScene(LoopContext* ctx, double simTime, const ResolvedActions& actions) {
-    float now = static_cast<float>(simTime);
-
-    // ctx->entities aliases the event system's working copy, so movement,
-    // events and the renderer all see one logical state.
-    std::unordered_map<EntityId, Vec3> positions;
-    for (const auto& kv : *ctx->entities)
-        positions[kv.first] = positionAt(kv.second, now);
+// One simulation tick for the scene mode: consume the pending tick command,
+// step the sim (movement + events — see stepSim in src/game/sim.cpp), and
+// forward the resulting Diff to the renderer. Pure CPU — sim time comes from
+// the SimState's tick clock, never the wall clock.
+static void tickScene(LoopContext* ctx) {
+    // Resolve the tick command — a pure function of the pending frame and the
+    // bindings. Edges are cleared after this tick so pressed/released never
+    // repeat across ticks; down-state persists.
+    ResolvedActions actions = ctx->inputSrc->poll(ctx->pending);
+    ctx->pending.pressed.clear();
+    ctx->pending.released.clear();
 
     Diff diff;
-    // Free movement: applies a velocity to every controlled entity.
-    applyMovement(actions, ctx->events->attrs(), *ctx->entities, now, positions, diff);
-    // Events (including input triggers) run against the resolved actions.
-    ctx->events->update(*ctx->scene, now, positions, actions, diff);
-    // Keep removals in sync (movement/event upserts already write *ctx->entities
-    // since it aliases the event system's working copy).
-    for (const auto& up : diff.upserts) (*ctx->entities)[up.first] = up.second;
-    for (EntityId id : diff.removals)   ctx->entities->erase(id);
+    stepSim(*ctx->scene, *ctx->sim, actions, diff);
     if (!diff.upserts.empty() || !diff.removals.empty())
         ctx->renderer->applyDiff(diff);
 }
@@ -253,25 +238,20 @@ static void frame(void* arg) {
     ctx->lastFrameTicks = nowMs;
 
     if (ctx->fixedTime >= 0.0f) {
-        // Deterministic test mode: constant tick, one step per rendered frame.
+        // Deterministic test mode: the clock stays pinned at the fixed tick;
+        // one step runs per rendered frame at that constant sim time.
         if (ctx->scene) {
-            ResolvedActions actions = ctx->inputSrc->poll(ctx->pending);
-            ctx->pending.pressed.clear();
-            ctx->pending.released.clear();
-            stepScene(ctx, ctx->clock.time(), actions);
+            uint64_t pinned = ctx->sim->clock.tick;
+            tickScene(ctx);
+            ctx->sim->clock.tick = pinned;
         }
     } else {
         while (ctx->accum >= SIM_DT) {
             if (ctx->scene) {
-                // Resolve the tick command — a pure function of the pending
-                // frame and the bindings. Edges are cleared after the first
-                // tick so pressed/released never repeat; down-state persists.
-                ResolvedActions actions = ctx->inputSrc->poll(ctx->pending);
-                ctx->pending.pressed.clear();
-                ctx->pending.released.clear();
-                stepScene(ctx, ctx->clock.time(), actions);
+                tickScene(ctx);           // advances ctx->sim->clock
+            } else {
+                ctx->clock.tick++;        // stress demo: time flows, no sim work
             }
-            ctx->clock.tick++;
             ctx->accum -= SIM_DT;
         }
     }
@@ -279,9 +259,10 @@ static void frame(void* arg) {
     // Render at the CONTINUOUS time — sim time plus the unsimulated remainder —
     // so visuals never stutter. The analytic motion model (pos + vel*t + ½at²)
     // makes this exact, not an approximation.
+    double simNow = ctx->sim ? ctx->sim->clock.time() : ctx->clock.time();
     float t = ctx->fixedTime >= 0.0f
         ? ctx->fixedTime
-        : static_cast<float>(ctx->clock.time() + ctx->accum);
+        : static_cast<float>(simNow + ctx->accum);
 
     if (!ctx->scene) {
         // Stress-test demo: the only thing that changes each frame is the
@@ -409,10 +390,10 @@ int main(int, char**) {
     SDL_Log("OpenGL: %s", glGetString(GL_VERSION));
 
     // --- Optionally load a data-driven scene (the script layer) -------------
-    // Heap-allocated so they outlive main() on the WASM async loop.
+    // Heap-allocated so they outlive main() on the WASM async loop. The Scene
+    // is immutable after load; all runtime mutation lives in the SimState.
     Scene*       scene   = nullptr;
-    EventSystem* events  = nullptr;
-    std::unordered_map<EntityId, Instance>* sceneEntities = nullptr;
+    SimState*    sim     = nullptr;
     InputSource* inputSrc = nullptr;  // set after scene is loaded
 
     const char* sheetPath = SHEET_PATH;
@@ -446,13 +427,9 @@ int main(int, char**) {
 
     int total = 0;
     if (scene) {
-        // --- Scene mode: upload the scene's world, prime the event system ---
+        // --- Scene mode: upload the scene's world, prime the sim state ------
         renderer.applyState(scene->initialState);
-        events = new EventSystem();
-        events->init(*scene);
-        // Alias the event system's working copy so movement, events and the
-        // renderer all share one logical instance map (no second copy to sync).
-        sceneEntities = &events->entities();
+        sim = new SimState(makeSimState(*scene));
         total = static_cast<int>(scene->initialState.instances.size());
         // Choose input source: bindings when defined, null otherwise. The source
         // copies the bindings, so it stays valid across scene unload/reload.
@@ -500,12 +477,15 @@ int main(int, char**) {
         startTicks, startTicks,
         0, 0, total, true,
         testFrames, fixedTime, doScreenshot, 0, false,
-        scene, events, sceneEntities, inputSrc
+        scene, sim, inputSrc
     };
     ctx->lastFrameTicks = startTicks;
     // CV_FIXED_TIME maps to a fixed tick count: tick = round(T / SIM_DT).
-    if (fixedTime >= 0.0f)
-        ctx->clock.tick = static_cast<uint64_t>(std::llround(fixedTime / SIM_DT));
+    if (fixedTime >= 0.0f) {
+        uint64_t fixedTick = static_cast<uint64_t>(std::llround(fixedTime / SIM_DT));
+        ctx->clock.tick = fixedTick;
+        if (sim) sim->clock.tick = fixedTick;
+    }
     // fps=0  → requestAnimationFrame (display-synced, pauses in background) — interactive
     // fps=60 → setTimeout at 60 fps (runs even in hidden tabs)           — test mode
     // simulate_infinite_loop=1: main() never returns; exit(0) terminates and
@@ -518,12 +498,15 @@ int main(int, char**) {
         startTicks, startTicks,
         0, 0, total, true,
         testFrames, fixedTime, doScreenshot, 0, false,
-        scene, events, sceneEntities, inputSrc
+        scene, sim, inputSrc
     };
     ctx.lastFrameTicks = startTicks;
     // CV_FIXED_TIME maps to a fixed tick count: tick = round(T / SIM_DT).
-    if (fixedTime >= 0.0f)
-        ctx.clock.tick = static_cast<uint64_t>(std::llround(fixedTime / SIM_DT));
+    if (fixedTime >= 0.0f) {
+        uint64_t fixedTick = static_cast<uint64_t>(std::llround(fixedTime / SIM_DT));
+        ctx.clock.tick = fixedTick;
+        if (sim) sim->clock.tick = fixedTick;
+    }
     if (scene) {
         ctx.scenePath = scenePath;
         struct stat st{};
@@ -535,9 +518,8 @@ int main(int, char**) {
     SDL_GL_DeleteContext(glCtx);
     SDL_DestroyWindow(window);
     SDL_Quit();
-    // sceneEntities aliases events->entities() — owned by `events`, not freed here.
     delete ctx.inputSrc;  // via ctx: hot-reload may have replaced the input source
-    delete events;
+    delete sim;
     delete scene;
 #endif
     return 0;

@@ -17,6 +17,11 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "scene.h"
 
 namespace cv {
 
@@ -28,5 +33,32 @@ struct SimClock {
     uint64_t tick = 0;
     double time() const { return static_cast<double>(tick) * SIM_DT; }
 };
+
+// ALL runtime simulation state, grouped into one cheaply-copyable value.
+// The Scene stays immutable after load; everything that mutates while the
+// game runs lives here. Copying a SimState and stepping the copy forward
+// (the shim lookahead fork) touches neither the Scene nor the renderer.
+struct SimState {
+    std::unordered_map<EntityId, Instance>    entities;  // working kinematic state
+    std::unordered_map<EntityId, EntityAttrs> attrs;     // controlled/speed per entity
+    std::unordered_map<std::string, bool>     flags;     // event flags
+    std::vector<uint8_t> fired;   // per-event fired markers, indexed by event position
+    SimClock clock;               // the sim's own tick clock
+    bool started = false;         // start triggers fire on the first step only
+};
+
+// Build the initial SimState for a freshly loaded scene: snapshot the scene's
+// entity instances and attributes, clear flags, size the fired markers.
+SimState makeSimState(const Scene& scene);
+
+// Advance `state` by exactly one tick against the immutable `scene`:
+// resolve movement for controlled entities, evaluate events, apply the
+// resulting changes to `state`, append renderer upserts/removals to `out`,
+// then increment the clock. `actions` is the tick-stamped input command for
+// this tick (edges must appear on exactly one tick — the caller guarantees
+// that). Pure with respect to its arguments: no globals, no wall clock, so
+// the same (scene, state, actions) always produces the same result.
+void stepSim(const Scene& scene, SimState& state,
+             const ResolvedActions& actions, Diff& out);
 
 } // namespace cv
