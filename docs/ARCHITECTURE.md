@@ -43,6 +43,9 @@ struct Instance {
 
     Vec4  tint;         // RGBA multiplier applied in the fragment shader
                         // (1,1,1,1 = opaque unmodified; alpha < 1 = translucent shim)
+
+    float sheet;        // sprite-sheet index = texture-array layer to sample
+                        // (value returned by Renderer::loadSheet; default 0)
 };
 ```
 
@@ -73,14 +76,38 @@ Instance  ──┘
 VBO (N×Instance)
 ```
 
+### Sprite sheets — one texture array, loadable at runtime
+
+All sprite sheets live in a single `GL_TEXTURE_2D_ARRAY` (`Renderer::MAX_SHEETS = 16`
+square layers of `SHEET_LAYER_SIZE = 1024`). `Renderer::init()` takes no sheet —
+sheets are runtime resources:
+
+```cpp
+bool init();                                            // GL objects only
+int  loadSheet(const char* path, int cols, int rows);   // → sheet index (layer)
+```
+
+`loadSheet` is callable any time after init (including between scenes) and is
+idempotent — reloading the same `(path, cols, rows)` returns the existing index, so
+scene hot-reload never leaks layers. The loader repacks the source PNG's cells
+row-major into the layer (flat cell order — and thus every animation frame index —
+is preserved; only the wrap width changes), so sheets of any shape fit as long as
+individual cells do. `Instance::sheet` selects the layer per instance; because the
+one array is bound once, multiple sheets add **zero** texture binds or draw calls.
+
 ### Sprite sheet animation
 
-The engine accepts one sprite sheet texture. Grid dimensions (`sheetCols`, `sheetRows`) are passed as uniforms. The vertex shader maps a flat cell index to a UV sub-rectangle:
+Per-layer cell layout is passed as `uniform vec4 uSheetGrid[MAX_SHEETS]`
+(x = columns per row after repacking, yz = cell size in UV units). The vertex
+shader maps a flat cell index to a UV sub-rectangle and forwards the layer index
+(`flat`) to the fragment shader, which samples the `sampler2DArray`:
 
 ```glsl
-float col = mod(cell, cols);
-float row = floor(cell / cols);
-vUV = (vec2(col, row) + aCornerUV) / vec2(cols, rows);
+vec4 grid = uSheetGrid[int(iSheet + 0.5)];
+float col = mod(cell, grid.x);
+float row = floor(cell / grid.x);
+vUV = (vec2(col, row) + aCornerUV) * grid.yz;
+// fragment: texture(uTex, vec3(vUV, vSheet))
 ```
 
 No extra draw calls per animation frame. No CPU involvement between uploads.
@@ -247,11 +274,13 @@ src/engine/
   gl.h              — platform GL include (Desktop / GLES3 / Emscripten stub)
   mathx.h           — header-only vec2/3/4, Mat4, perspective, ortho, lookAt
   shader.h/.cpp     — compileShader, buildProgram, setUniform overloads
-  texture.h/.cpp    — loadTexture via stb_image (GL_NEAREST for pixel art)
+  texture.h/.cpp    — TextureArray: one GL_TEXTURE_2D_ARRAY for all sprite
+                      sheets, cells repacked per layer (GL_NEAREST, stb_image)
   camera.h          — Camera struct, viewProjection(), right(), trueUp()
   instance.h        — Instance POD + makeBillboard/makeSprite/setAnimation/setMotion
   world_state.h     — WorldState, Diff, EntityId
-  renderer.h/.cpp   — Renderer: owns VAO/VBOs/program/texture, applyState/applyDiff/render
+  renderer.h/.cpp   — Renderer: owns VAO/VBOs/program/texture array,
+                      init/loadSheet/applyState/applyDiff/render
   sdl_input.h/.cpp  — buildInputFrame: SDL events → device-agnostic InputFrame
                       (the ONLY place SDL keyboard events meet game input)
   main.cpp          — entry point: fixed-timestep accumulator loop; stress-test

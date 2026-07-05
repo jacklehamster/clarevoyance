@@ -134,6 +134,23 @@ struct LoopContext {
     Uint64      lastReloadCheck = 0;
 };
 
+// Load every sheet a scene references into the renderer's texture array; the
+// entity `sheet` field indexes the scene's sheet list. loadSheet is idempotent,
+// so calling this again on hot-reload is cheap. Warns if a sheet lands on a
+// layer other than its scene index (only possible when a hot-reload *changes*
+// the sheet list — entity sheet indices assume the identity mapping).
+static bool loadSceneSheets(Renderer& renderer, const Scene& scene) {
+    for (size_t i = 0; i < scene.sheets.size(); ++i) {
+        const SheetInfo& s = scene.sheets[i];
+        int layer = renderer.loadSheet(s.path.c_str(), s.cols, s.rows);
+        if (layer < 0) return false;
+        if (layer != static_cast<int>(i))
+            SDL_Log("Warning: sheet '%s' is layer %d but scene index %zu — "
+                    "restart to realign sheet indices", s.path.c_str(), layer, i);
+    }
+    return true;
+}
+
 #if !defined(__EMSCRIPTEN__)
 // Once per second, stat() the scene file; if it changed on disk, re-load it and
 // reset the world (renderer state, event system, input source). Desktop only —
@@ -159,6 +176,8 @@ static void maybeHotReloadScene(LoopContext* ctx) {
     }
 
     *ctx->scene = std::move(fresh);
+    if (!loadSceneSheets(*ctx->renderer, *ctx->scene))
+        SDL_Log("Scene hot-reload: sheet load failed — sprites may be blank");
     ctx->renderer->applyState(ctx->scene->initialState);
     *ctx->sim = makeSimState(*ctx->scene);  // fresh runtime state, tick 0
     delete ctx->inputSrc;
@@ -396,9 +415,6 @@ int main(int, char**) {
     SimState*    sim     = nullptr;
     InputSource* inputSrc = nullptr;  // set after scene is loaded
 
-    const char* sheetPath = SHEET_PATH;
-    int sheetCols = SHEET_COLS, sheetRows = SHEET_ROWS;
-
     if (!scenePath.empty()) {
         scene = new Scene();
         std::string err;
@@ -408,22 +424,32 @@ int main(int, char**) {
             SDL_GL_DeleteContext(glCtx); SDL_DestroyWindow(window); SDL_Quit();
             return 1;
         }
-        sheetPath = scene->sheet.path.c_str();
-        sheetCols = scene->sheet.cols;
-        sheetRows = scene->sheet.rows;
         SDL_Log("Loaded scene '%s': %zu entities, %zu events, %zu bindings",
                 scenePath.c_str(), scene->initialState.instances.size(),
                 scene->events.size(), scene->bindings.size());
     }
 
     Renderer renderer;
-    if (!renderer.init(sheetPath, sheetCols, sheetRows)) {
-        SDL_Log("Renderer init failed — is %s present?", sheetPath);
+    if (!renderer.init()) {
+        SDL_Log("Renderer init failed");
         delete scene;
         SDL_GL_DeleteContext(glCtx); SDL_DestroyWindow(window); SDL_Quit();
         return 1;
     }
     renderer.setViewport(WINDOW_W, WINDOW_H);
+
+    // Load sprite sheets after init — sheets are runtime resources now, one
+    // texture-array layer each (scene sheets, or the stress-test penguin sheet).
+    bool sheetsOk = scene
+        ? loadSceneSheets(renderer, *scene)
+        : renderer.loadSheet(SHEET_PATH, SHEET_COLS, SHEET_ROWS) >= 0;
+    if (!sheetsOk) {
+        SDL_Log("Sprite sheet load failed");
+        renderer.shutdown();
+        delete scene;
+        SDL_GL_DeleteContext(glCtx); SDL_DestroyWindow(window); SDL_Quit();
+        return 1;
+    }
 
     int total = 0;
     if (scene) {

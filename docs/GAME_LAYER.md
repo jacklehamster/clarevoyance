@@ -187,7 +187,7 @@ sending Mochi leaping away via `set_motion`.
 
 ```json
 {
-  "sheet": { "path": "art/penguin.png", "cols": 16, "rows": 1 },
+  "sheets": [ { "path": "art/penguin.png", "cols": 16, "rows": 1 } ],
   "cameras": [
     { "projection": "perspective", "position": [6, 7, 16], "target": [6, 0, 5] }
   ],
@@ -202,9 +202,15 @@ sending Mochi leaping away via `set_motion`.
 }
 ```
 
+`sheets` lists every sprite sheet the scene uses (loaded into the renderer's texture
+array in order — see ARCHITECTURE.md); the singular `"sheet"` object is still accepted
+as `sheets[0]`. An entity's optional `"sheet"` field is an index into that list
+(default 0).
+
 Entities are referenced by string `id` in the data file; the loader assigns numeric
 `EntityId`s (starting at 1) and keeps the name→id map. Optional fields: `vel`, `accel`
-(motion, evaluated on the GPU and mirrored on the CPU for triggers), `rotation` (non-billboard).
+(motion, evaluated on the GPU and mirrored on the CPU for triggers), `sheet`,
+`rotation` (non-billboard).
 
 ### Event / Condition / Action system
 

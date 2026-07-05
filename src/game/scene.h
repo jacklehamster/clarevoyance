@@ -77,7 +77,9 @@ struct Event {
     bool once = true;       // fire at most once (fired markers live in SimState)
 };
 
-// Sprite-sheet description pulled from the scene file (the renderer needs it at init).
+// Sprite-sheet description pulled from the scene file. Each sheet is loaded
+// into the renderer via Renderer::loadSheet after init; an entity's optional
+// "sheet" field indexes into this list (default 0).
 struct SheetInfo {
     std::string path = "art/penguin.png";
     int cols = 16;
@@ -85,7 +87,7 @@ struct SheetInfo {
 };
 
 struct Scene {
-    SheetInfo sheet;
+    std::vector<SheetInfo> sheets;           // at least one (defaulted if absent)
     WorldState initialState;                 // entities + cameras, ready to upload
     std::vector<Event> events;               // trigger/condition/action rules
     std::unordered_map<std::string, EntityId> nameToId;  // data-file name → id

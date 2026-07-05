@@ -49,6 +49,10 @@ Instance readEntity(const JsonValue& e, EntityAttrs& attrs) {
     if (const JsonValue* acc = e.find("accel"))
         inst.accel = readVec3(acc, {0, 0, 0});
 
+    // Optional sheet index into the scene's "sheets" list (default 0).
+    if (const JsonValue* sh = e.find("sheet"))
+        inst.sheet = static_cast<float>(static_cast<int>(sh->number(0)));
+
     if (const JsonValue* a = e.find("anim")) {
         int   first = static_cast<int>(a->find("first") ? a->find("first")->number() : 0);
         int   count = static_cast<int>(a->find("count") ? a->find("count")->number() : 1);
@@ -130,12 +134,24 @@ bool loadScene(const char* path, Scene& out, std::string& error) {
     if (!JsonParser::parse(text, root, error)) return false;
     if (!root.isObject()) { error = "scene root must be a JSON object"; return false; }
 
-    // Sheet
-    if (const JsonValue* s = root.find("sheet")) {
-        if (const JsonValue* p = s->find("path")) out.sheet.path = p->string(out.sheet.path);
-        if (const JsonValue* c = s->find("cols")) out.sheet.cols = static_cast<int>(c->number(out.sheet.cols));
-        if (const JsonValue* r = s->find("rows")) out.sheet.rows = static_cast<int>(r->number(out.sheet.rows));
+    // Sheets — preferred: "sheets": [{path, cols, rows}, ...]. The singular
+    // "sheet" object is still accepted as sheets[0] for backward compatibility.
+    auto readSheet = [](const JsonValue& s) {
+        SheetInfo info;
+        if (const JsonValue* p = s.find("path")) info.path = p->string(info.path);
+        if (const JsonValue* c = s.find("cols")) info.cols = static_cast<int>(c->number(info.cols));
+        if (const JsonValue* r = s.find("rows")) info.rows = static_cast<int>(r->number(info.rows));
+        return info;
+    };
+    if (const JsonValue* list = root.find("sheets")) {
+        if (list->isArray())
+            for (const JsonValue& s : list->arr)
+                out.sheets.push_back(readSheet(s));
+    } else if (const JsonValue* s = root.find("sheet")) {
+        out.sheets.push_back(readSheet(*s));
     }
+    if (out.sheets.empty())
+        out.sheets.push_back(SheetInfo{});  // sane default (see SheetInfo)
 
     // Cameras
     if (const JsonValue* cams = root.find("cameras")) {

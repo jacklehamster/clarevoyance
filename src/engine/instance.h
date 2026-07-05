@@ -34,6 +34,11 @@ struct Instance {
     // Default (1,1,1,1) = fully opaque, unmodified colour.
     // Set alpha < 1 for translucent shims; set rgb to tint the sprite.
     Vec4 tint = {1, 1, 1, 1};
+
+    // Sheet: which sprite-sheet layer of the shared texture array to sample
+    // (index returned by Renderer::loadSheet). Float because it rides the same
+    // all-float GPU attribute stream; always an integral value.
+    float sheet = 0.0f;
 };
 
 // Compile-time ABI guard: Instance is a binary contract with the GPU attribute
@@ -42,6 +47,8 @@ static_assert(std::is_standard_layout<Instance>::value, "Instance must be standa
 static_assert(sizeof(Vec2) == 8,  "Vec2 size changed — GPU attribute layout broken");
 static_assert(sizeof(Vec3) == 12, "Vec3 size changed — GPU attribute layout broken");
 static_assert(sizeof(Vec4) == 16, "Vec4 size changed — GPU attribute layout broken");
+static_assert(sizeof(Instance) == 23 * sizeof(float),
+              "Instance size changed — update the GPU attribute layout in renderer.cpp");
 
 // --- Convenience builders (keep call sites in the demo / game readable) ------
 

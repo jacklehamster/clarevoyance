@@ -75,4 +75,9 @@ void setUniform(GLuint program, const char* name, const Mat4& v) {
     glUniformMatrix4fv(glGetUniformLocation(program, name), 1, GL_FALSE, v.m);
 }
 
+void setUniformArray(GLuint program, const char* name, const Vec4* v, int count) {
+    glUniform4fv(glGetUniformLocation(program, name), count,
+                 reinterpret_cast<const float*>(v));
+}
+
 } // namespace cv

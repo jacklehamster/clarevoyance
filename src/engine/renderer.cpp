@@ -26,16 +26,21 @@ layout(location = 7) in float iRotation;
 layout(location = 8) in float iBillboard;
 layout(location = 9) in vec4 iAnim;    // firstFrame, frameCount, fps, animStart
 layout(location = 10) in vec4 iTint;   // RGBA multiplier (1,1,1,1 = opaque)
+layout(location = 11) in float iSheet; // texture-array layer (sheet index)
+
+const int MAX_SHEETS = 16;             // keep in sync with Renderer::MAX_SHEETS
 
 uniform mat4 uViewProj;
 uniform float uTime;
-uniform int uSheetCols;
-uniform int uSheetRows;
+// Per-sheet cell layout inside its layer: x = columns per row (after repack),
+// yz = cell size in UV units, w unused. See texture.h / Renderer::loadSheet.
+uniform vec4 uSheetGrid[MAX_SHEETS];
 uniform vec3 uCamRight;
 uniform vec3 uCamUp;
 
 out vec2 vUV;
 out vec4 vTint;
+flat out float vSheet;
 
 void main() {
     // --- Motion: evolve the sprite center from its launch params -----------
@@ -63,24 +68,26 @@ void main() {
     float local = (fps > 0.0) ? mod(floor(animDt * fps), frameCount) : 0.0;
     float cell = iAnim.x + local;
 
-    float cols = float(uSheetCols);
-    float rows = float(uSheetRows);
+    vec4 grid = uSheetGrid[int(iSheet + 0.5)];
+    float cols = grid.x;
     float col = mod(cell, cols);
     float row = floor(cell / cols);
-    vUV  = (vec2(col, row) + aUV) / vec2(cols, rows);
+    vUV  = (vec2(col, row) + aUV) * grid.yz;
     vTint = iTint;
+    vSheet = iSheet;
 }
 )glsl";
 
 static const char* FRAG_SRC = R"glsl(
 in vec2 vUV;
 in vec4 vTint;
+flat in float vSheet;
 out vec4 fragColor;
 
-uniform sampler2D uTex;
+uniform highp sampler2DArray uTex;
 
 void main() {
-    vec4 c = texture(uTex, vUV) * vTint;
+    vec4 c = texture(uTex, vec3(vUV, vSheet)) * vTint;
     if (c.a < 0.05) discard;
     fragColor = c;
 }
@@ -90,19 +97,12 @@ void main() {
 // Setup
 // ---------------------------------------------------------------------------
 
-bool Renderer::init(const char* spriteSheetPath, int sheetCols, int sheetRows) {
-    if (sheetCols <= 0 || sheetRows <= 0) {
-        SDL_Log("Renderer::init: invalid sheet grid cols=%d rows=%d", sheetCols, sheetRows);
-        return false;
-    }
-    sheetCols_ = sheetCols;
-    sheetRows_ = sheetRows;
-
+bool Renderer::init() {
     program_ = buildProgram(VERT_SRC, FRAG_SRC);
     if (!program_) return false;
 
-    texture_ = loadTexture(spriteSheetPath);
-    if (!texture_.valid()) {
+    textureArray_ = createTextureArray(SHEET_LAYER_SIZE, MAX_SHEETS);
+    if (!textureArray_.valid()) {
         glDeleteProgram(program_);
         program_ = 0;
         return false;
@@ -153,6 +153,7 @@ bool Renderer::init(const char* spriteSheetPath, int sheetCols, int sheetRows) {
     attrib(8, 1, offsetof(Instance, billboard));
     attrib(9, 4, offsetof(Instance, anim));
     attrib(10, 4, offsetof(Instance, tint));
+    attrib(11, 1, offsetof(Instance, sheet));
 
     glBindVertexArray(0);
 
@@ -166,8 +167,36 @@ bool Renderer::init(const char* spriteSheetPath, int sheetCols, int sheetRows) {
     return true;
 }
 
+int Renderer::loadSheet(const char* path, int cols, int rows) {
+    if (cols <= 0 || rows <= 0) {
+        SDL_Log("Renderer::loadSheet: invalid grid cols=%d rows=%d for '%s'",
+                cols, rows, path);
+        return -1;
+    }
+    // Idempotent: the same sheet asked for twice (e.g. scene hot-reload) reuses
+    // its layer instead of exhausting the array.
+    for (size_t i = 0; i < sheets_.size(); ++i) {
+        if (sheets_[i].path == path && sheets_[i].cols == cols &&
+            sheets_[i].rows == rows) {
+            return static_cast<int>(i);
+        }
+    }
+
+    SheetGrid grid;
+    int layer = loadSheetIntoArray(textureArray_, path, cols, rows, grid);
+    if (layer < 0) return -1;
+
+    LoadedSheet sheet;
+    sheet.path = path;
+    sheet.cols = cols;
+    sheet.rows = rows;
+    sheet.grid = grid;
+    sheets_.push_back(std::move(sheet));
+    return layer;
+}
+
 void Renderer::shutdown() {
-    destroyTexture(texture_);
+    destroyTextureArray(textureArray_);
     if (instanceVbo_) glDeleteBuffers(1, &instanceVbo_);
     if (quadEbo_) glDeleteBuffers(1, &quadEbo_);
     if (quadVbo_) glDeleteBuffers(1, &quadVbo_);
@@ -264,13 +293,20 @@ void Renderer::render(float time) {
     glUseProgram(program_);
     setUniform(program_, "uViewProj", cam->viewProjection());
     setUniform(program_, "uTime", time);
-    setUniform(program_, "uSheetCols", sheetCols_);
-    setUniform(program_, "uSheetRows", sheetRows_);
     setUniform(program_, "uCamRight", cam->right());
     setUniform(program_, "uCamUp", cam->trueUp());
 
+    // Per-sheet cell layout for the UV math (x = cols, yz = cell UV size).
+    Vec4 sheetGrid[MAX_SHEETS];
+    for (int i = 0; i < MAX_SHEETS; ++i) {
+        SheetGrid g;
+        if (i < static_cast<int>(sheets_.size())) g = sheets_[i].grid;
+        sheetGrid[i] = {g.cols, g.cellU, g.cellV, 0.0f};
+    }
+    setUniformArray(program_, "uSheetGrid", sheetGrid, MAX_SHEETS);
+
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture_.id);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, textureArray_.id);
     setUniform(program_, "uTex", 0);
 
     glBindVertexArray(vao_);
