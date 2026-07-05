@@ -24,6 +24,9 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libglew-dev clang
 
+      - name: Unit tests (json, events, determinism replay, scene loading)
+        run: make test-unit
+
       - name: Desktop compile gate
         run: make build
 

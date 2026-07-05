@@ -21,12 +21,15 @@ WASM_FLAGS := -std=c++17 -O2 -Isrc/engine -Isrc/game \
               --pre-js web/pre.js
 
 SRC      := $(wildcard src/engine/*.cpp) $(wildcard src/game/*.cpp)
+GAME_SRC := $(wildcard src/game/*.cpp)
+TEST_SRC := $(wildcard tests/*.cpp)
 
 BIN      := build/clarevoyance
 APP       := build/Clarevoyance.app
 EXE       := $(APP)/Contents/MacOS/clarevoyance
 
 TEST_DIR  := build/test
+TEST_UNIT := build/test_unit
 IMGDIFF   := tools/imgdiff
 
 # Test parameters — deterministic fixed frame, enough frames to get past upload.
@@ -36,7 +39,7 @@ TEST_TIME   := 2.0
 .PHONY: all build bundle run demo demo-controls demo-events demo-menu clean \
         build-wasm run-wasm \
         deploy \
-        test test-wasm test-parity
+        test test-unit test-wasm test-parity
 
 # Scene to run with `make demo` — override on the command line:
 #   make demo SCENE=src/levels/other.json
@@ -116,6 +119,15 @@ deploy: build-wasm
 
 $(IMGDIFF): tools/imgdiff.c src/engine/third_party/stb_image.h
 	clang -O2 -Isrc/engine -o $@ $< -lm
+
+# Unit tests: pure CPU (json parser, event system, determinism replay, scene
+# loading). Compiles the game layer only — no GL, no SDL, no window needed.
+$(TEST_UNIT): $(TEST_SRC) $(GAME_SRC) $(wildcard tests/*.h) $(wildcard src/game/*.h) $(wildcard src/engine/*.h)
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(TEST_SRC) $(GAME_SRC) -o $@
+
+test-unit: $(TEST_UNIT)
+	./$(TEST_UNIT)
 
 test: build $(IMGDIFF)
 	@mkdir -p $(TEST_DIR)
