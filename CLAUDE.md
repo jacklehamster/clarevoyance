@@ -317,13 +317,20 @@ https://clare.dobuki.net (landing page with demo cards).
   evaluated entirely on the GPU from `uTime` (see `docs/ARCHITECTURE.md`)
 - Per-instance `tint` (RGBA multiplier) — the rendering hook for translucent shims
 - Data-driven scenes (`src/levels/*.json`): entities, cameras, events
-  (trigger/condition/action), key bindings, free player movement
+  (trigger/condition/action), archetypes with named clips, flags/conditions, key bindings,
+  free player movement
+- Bitmap-font text (`src/game/text.h`, `scripts/gen_font.py` → `art/font.png`): scene "text"
+  entities expand to one glyph Instance per character — no renderer changes needed
+- Quest demo (`src/levels/quest.json`, `make demo-quest`): the flagship demo — 3 keys, a
+  counter-gated door, a patrolling enemy previewed by a real 1-second-ahead shim ghost (see
+  `docs/GAME_LAYER.md`, "Demos"), and a win room
 - Scene hot-reload on desktop: edit the JSON while `make demo` runs and it reloads
 - Cross-platform: desktop (OpenGL 3.3 Core) and browser (WebGL 2) with pixel-identical
   output verified by `make test-parity`
 
-**Make targets:** `build`, `run`, `demo` (SCENE=…), `demo-events`, `demo-controls`,
-`demo-menu`, `build-wasm`, `run-wasm`, `deploy`, `test`, `test-wasm`, `test-parity`, `clean`.
+**Make targets:** `build`, `run`, `demo` (SCENE=…), `demo-quest`, `demo-world`, `demo-events`,
+`demo-controls`, `demo-menu`, `build-wasm`, `run-wasm`, `deploy`, `test`, `test-unit`,
+`test-wasm`, `test-parity`, `clean`.
 
 **Next up:** see `docs/specs/` — scene coordinator, world building (textured grid quads),
 in-engine map editor, and the shim lookahead system (60 Hz fixed tick, lockstep-friendly).

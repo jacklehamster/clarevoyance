@@ -454,6 +454,50 @@ move together; pressing space again drops the buddy back out.
 
 ---
 
+## Demos
+
+Every demo is a plain scene JSON under `src/levels/`, run via `make demo-<name>` (desktop) or
+the matching card on the [landing page](https://clare.dobuki.net) (web). Each one isolates a
+layer or feature so a regression is easy to localize:
+
+| Demo | Make target | Scene | Proves |
+|------|-------------|-------|--------|
+| **Quest** (flagship) | `make demo-quest` | `quest.json` | Everything below, combined into one small playable game: archetypes + named clips, flags/conditions gating a door, bitmap-font text, a patrolling enemy driven by `set_motion` + proximity, and a real shim preview (see below). |
+| World | `make demo-world` | `world.json` | Tiled floor (pitched quads) + brick walls (upright quads) from a second sprite sheet, plus a translucent ghost — the two-pass opaque/translucent render path. |
+| Controls | `make demo-controls` | `controls.json` | The `input` trigger and `toggle_controlled`/`set_controlled` — free WASD/arrow movement, toggling a second controlled entity. |
+| Menu | `make demo-menu` | `menu.json` | Flags + `input` triggers driving pure animation-state UI (no 3D movement). |
+| Events | `make demo-events` | `demo.json` | The original proximity → dialogue → `set_motion` chain (Mochi). |
+| Stress Test | `make demo` (no `SCENE=`) / `stress.html` | — (code-built) | Raw throughput: 900 instanced billboards, GPU-driven animation, no scene/event system involved. |
+
+### The quest demo
+
+`src/levels/quest.json`: a small room (6×6 main area + a 6×2 vault behind a gated door). The
+player (a controlled penguin archetype) must find 3 keys — each a proximity trigger that
+`remove`s the key, `add_flag`s a `keys` counter, and fires a `dialogue`. The gate's middle
+segment (`door`, tinted purple to read as distinct from the plain brick walls) only despawns
+once a `condition: { "flag": "keys", "op": "ge", "value": 3 }` passes on a proximity trigger,
+revealing a "WIN" bitmap-font text and a `win_marker` proximity zone that fires a `victory`
+dialogue and swaps the player to its `chat` clip. A second penguin patrols back and forth
+between two invisible marker entities (tint alpha 0, so they're discarded by the fragment
+shader and never drawn) via a pair of mirrored proximity → `set_motion` events; touching it
+fires an `ouch` dialogue and a small `set_motion` knockback (non-fatal — this engine has no
+collision/health system yet, so it's flavor, not damage).
+
+**The shim preview**, done with zero new engine code: `enemy_shim` is a second Instance with
+the *exact same* starting `pos`/`vel` as `enemy`, but `"motionStart": -1.0` — one second
+"pre-aged" on the same analytic motion formula (`pos + vel·dt + ½·accel·dt²`) every Instance
+already evaluates. At any moment it therefore renders exactly where the real enemy *will be*
+one second from now. The trick is keeping that phase offset exact across the enemy's direction
+flips: `enemy_shim` gets its own copies of the two patrol proximity events (against the same
+markers, same radius), so it independently reaches each marker and flips its own velocity —
+always exactly one second before the real enemy does, since both move at identical speed along
+identical geometry. The result is a genuine clairvoyance-style "ghost ahead" preview (tinted
+`[0.5, 0.8, 1, 0.35]`, translucent pass), built entirely from `motionStart` + proximity triggers
++ `set_motion` — the same primitives every other demo uses. See `docs/specs/SHIM_SYSTEM.md` for
+where this goes next (a real forward-simulation lookahead rather than a hand-authored mirror).
+
+---
+
 ## World Structure
 
 ### Outdoors
