@@ -41,8 +41,12 @@ Instance readEntity(const JsonValue& e, EntityAttrs& attrs) {
     if (const JsonValue* b = e.find("billboard")) bb = b->boolean(true);
 
     Instance inst = bb ? makeBillboard(pos, scale) : makeSprite(pos, scale);
+    // Non-billboard orientation (radians): "rotation" = yaw about world-up,
+    // "pitch" tilts the quad (0 = upright wall, -pi/2 = flat floor tile).
     if (!bb && e.find("rotation"))
         inst.rotation = static_cast<float>(e.find("rotation")->number());
+    if (!bb && e.find("pitch"))
+        inst.pitch = static_cast<float>(e.find("pitch")->number());
 
     if (const JsonValue* vel = e.find("vel"))
         inst.vel = readVec3(vel, {0, 0, 0});

@@ -61,8 +61,33 @@ static void test_scene_sheets() {
     }
 }
 
+// Orientation parsing: non-billboard entities take yaw ("rotation") and
+// "pitch" in radians; the basis itself is built in the vertex shader.
+static void test_scene_orientation() {
+    Scene scene;
+    std::string err;
+    bool ok = loadFromString(R"({
+        "entities": [
+            { "id": "floor", "pos": [0, 0, 0], "billboard": false,
+              "rotation": 0.5, "pitch": -1.5707963 },
+            { "id": "wall", "pos": [1, 0, 0], "billboard": false, "rotation": 1.0 },
+            { "id": "sprite", "pos": [2, 0, 0], "billboard": true, "pitch": 2.0 }
+        ]
+    })", scene, err);
+    CHECK_MSG(ok, err.c_str());
+    const Instance& floor = scene.initialState.instances[scene.idOf("floor")];
+    CHECK(floor.rotation == 0.5f);
+    CHECK(floor.pitch < -1.57f && floor.pitch > -1.58f);
+    const Instance& wall = scene.initialState.instances[scene.idOf("wall")];
+    CHECK(wall.rotation == 1.0f);
+    CHECK(wall.pitch == 0.0f);      // defaults upright
+    // Billboards ignore orientation fields entirely.
+    CHECK(scene.initialState.instances[scene.idOf("sprite")].pitch == 0.0f);
+}
+
 void test_scene_load() {
     test_scene_sheets();
+    test_scene_orientation();
     const char* dir = "src/levels";
     CHECK_MSG(fs::is_directory(dir), "run from the repo root");
     if (!fs::is_directory(dir)) return;

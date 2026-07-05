@@ -22,7 +22,7 @@ layout(location = 3) in vec3 iVel;
 layout(location = 4) in vec3 iAccel;
 layout(location = 5) in float iMotionStart;
 layout(location = 6) in vec2 iScale;
-layout(location = 7) in float iRotation;
+layout(location = 7) in vec2 iRot;     // x = yaw, y = pitch (radians)
 layout(location = 8) in float iBillboard;
 layout(location = 9) in vec4 iAnim;    // firstFrame, frameCount, fps, animStart
 layout(location = 10) in vec4 iTint;   // RGBA multiplier (1,1,1,1 = opaque)
@@ -47,16 +47,20 @@ void main() {
     float dt = max(0.0, uTime - iMotionStart);
     vec3 center = iPos + iVel * dt + 0.5 * iAccel * dt * dt;
 
-    // --- Orientation: billboard toward camera, or yaw about world up -------
+    // --- Orientation: billboard toward camera, or yaw+pitch basis ----------
+    // Non-billboard quads use the model basis Ry(yaw) * Rx(pitch): pitch 0 is
+    // upright (a wall), pitch -pi/2 lies the quad flat facing +Y (a floor).
     vec2 c = aCorner * iScale;
     vec3 offset;
     if (iBillboard > 0.5) {
         offset = uCamRight * c.x + uCamUp * c.y;
     } else {
-        float cs = cos(iRotation);
-        float sn = sin(iRotation);
-        vec3 rightAxis = vec3(cs, 0.0, -sn); // yaw in the XZ plane
-        vec3 upAxis = vec3(0.0, 1.0, 0.0);
+        float cy = cos(iRot.x);
+        float sy = sin(iRot.x);
+        float cp = cos(iRot.y);
+        float sp = sin(iRot.y);
+        vec3 rightAxis = vec3(cy, 0.0, -sy);       // Ry(yaw) * +X
+        vec3 upAxis = vec3(sy * sp, cp, cy * sp);  // Ry(yaw) * Rx(pitch) * +Y
         offset = rightAxis * c.x + upAxis * c.y;
     }
     gl_Position = uViewProj * vec4(center + offset, 1.0);
@@ -149,7 +153,7 @@ bool Renderer::init() {
     attrib(4, 3, offsetof(Instance, accel));
     attrib(5, 1, offsetof(Instance, motionStart));
     attrib(6, 2, offsetof(Instance, scale));
-    attrib(7, 1, offsetof(Instance, rotation));
+    attrib(7, 2, offsetof(Instance, rotation));  // vec2: (rotation=yaw, pitch)
     attrib(8, 1, offsetof(Instance, billboard));
     attrib(9, 4, offsetof(Instance, anim));
     attrib(10, 4, offsetof(Instance, tint));

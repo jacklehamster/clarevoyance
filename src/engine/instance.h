@@ -24,8 +24,12 @@ struct Instance {
     float motionStart = 0.0f;    // time origin for the motion formula
 
     Vec2 scale = {1, 1};         // sprite world size
-    float rotation = 0.0f;       // yaw about world-up, radians (oriented sprites)
-    float billboard = 0.0f;      // 1 = always face camera, else use rotation
+    // Orientation for non-billboard quads: model basis = Ry(yaw) * Rx(pitch).
+    // pitch 0 = upright (a wall); pitch -pi/2 lies the quad flat facing +Y (a
+    // floor tile). Roll is deliberately absent — tiles and walls don't need it.
+    float rotation = 0.0f;       // yaw about world-up, radians
+    float pitch = 0.0f;          // pitch about the local right axis, radians
+    float billboard = 0.0f;      // 1 = always face camera, else use rotation/pitch
 
     // Animation: firstFrame, frameCount, framesPerSecond, animStart.
     Vec4 anim = {0, 1, 0, 0};
@@ -47,7 +51,7 @@ static_assert(std::is_standard_layout<Instance>::value, "Instance must be standa
 static_assert(sizeof(Vec2) == 8,  "Vec2 size changed — GPU attribute layout broken");
 static_assert(sizeof(Vec3) == 12, "Vec3 size changed — GPU attribute layout broken");
 static_assert(sizeof(Vec4) == 16, "Vec4 size changed — GPU attribute layout broken");
-static_assert(sizeof(Instance) == 23 * sizeof(float),
+static_assert(sizeof(Instance) == 24 * sizeof(float),
               "Instance size changed — update the GPU attribute layout in renderer.cpp");
 
 // --- Convenience builders (keep call sites in the demo / game readable) ------
@@ -57,6 +61,16 @@ inline Instance makeSprite(Vec3 pos, Vec2 scale, float rotation = 0.0f) {
     i.pos = pos;
     i.scale = scale;
     i.rotation = rotation;
+    return i;
+}
+
+// An oriented quad with full yaw+pitch — walls (pitch 0) and floors (pitch -pi/2).
+inline Instance makeQuad(Vec3 pos, Vec2 scale, float yawRadians, float pitchRadians) {
+    Instance i;
+    i.pos = pos;
+    i.scale = scale;
+    i.rotation = yawRadians;
+    i.pitch = pitchRadians;
     return i;
 }
 

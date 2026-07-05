@@ -36,7 +36,9 @@ struct Instance {
     float motionStart;  // time origin for motion formula
 
     Vec2  scale;        // world-space sprite size
-    float rotation;     // yaw about world-up (oriented sprites)
+    float rotation;     // yaw about world-up, radians (oriented quads)
+    float pitch;        // pitch about the local right axis, radians
+                        // (0 = upright wall, -pi/2 = flat floor tile)
     float billboard;    // 1 = always face camera
 
     Vec4  anim;         // firstFrame, frameCount, fps, animStart
@@ -112,12 +114,12 @@ vUV = (vec2(col, row) + aCornerUV) * grid.yz;
 
 No extra draw calls per animation frame. No CPU involvement between uploads.
 
-### Billboarding vs. oriented sprites
+### Billboarding vs. oriented quads
 
 Controlled per instance by the `billboard` float flag:
 
-- **Billboard (`billboard = 1`):** quad is offset along camera right/up vectors (passed as uniforms). Always faces the camera regardless of rotation.
-- **Oriented (`billboard = 0`):** quad is offset along a world-space right axis derived from `rotation` (yaw about Y). Useful for floor decals, placed objects.
+- **Billboard (`billboard = 1`):** quad is offset along camera right/up vectors (passed as uniforms). Always faces the camera; `rotation`/`pitch` are ignored.
+- **Oriented (`billboard = 0`):** the vertex shader builds the model basis `Ry(yaw) * Rx(pitch)` from `rotation` (yaw) and `pitch`. Pitch 0 is an upright quad (wall segments, placed objects); pitch −π/2 lies the quad flat facing +Y (floor tiles, decals). Roll is deliberately absent — tiles and walls don't need it, and it keeps the instance two floats instead of a quaternion. Builder: `makeQuad(pos, scale, yaw, pitch)`.
 
 ### Alpha cutout
 
@@ -277,7 +279,8 @@ src/engine/
   texture.h/.cpp    — TextureArray: one GL_TEXTURE_2D_ARRAY for all sprite
                       sheets, cells repacked per layer (GL_NEAREST, stb_image)
   camera.h          — Camera struct, viewProjection(), right(), trueUp()
-  instance.h        — Instance POD + makeBillboard/makeSprite/setAnimation/setMotion
+  instance.h        — Instance POD + makeBillboard/makeSprite/makeQuad/
+                      setAnimation/setMotion
   world_state.h     — WorldState, Diff, EntityId
   renderer.h/.cpp   — Renderer: owns VAO/VBOs/program/texture array,
                       init/loadSheet/applyState/applyDiff/render
