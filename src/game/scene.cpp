@@ -139,6 +139,14 @@ bool readEntity(const JsonValue& e, EntityAttrs& attrs, const Archetype* arch,
     if (!readVec3(e.find("vel"),   inst.vel,   ctx + ".vel",   error)) return false;
     if (!readVec3(e.find("accel"), inst.accel, ctx + ".accel", error)) return false;
 
+    // Optional motion time-origin override (default 0, i.e. sim start). Mainly
+    // for authoring a "shim" ghost: give it the same pos/vel as another entity
+    // but motionStart = -N, and its position formula renders N seconds ahead
+    // of that entity's — a real lookahead preview built from nothing but the
+    // existing motion model (see quest.json's enemy / enemy_shim).
+    if (const JsonValue* ms = e.find("motionStart"))
+        inst.motionStart = static_cast<float>(ms->number(inst.motionStart));
+
     // Optional sheet index into the scene's "sheets" list (default 0).
     if (const JsonValue* sh = e.find("sheet"))
         inst.sheet = static_cast<float>(static_cast<int>(sh->number(0)));

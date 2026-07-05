@@ -143,6 +143,7 @@
         "pitch":     { "type": "number", "description": "Tilt about the local right axis, radians; -pi/2 lies the quad flat as a floor tile (non-billboard only)." },
         "vel":       { "$ref": "#/definitions/vec3" },
         "accel":     { "$ref": "#/definitions/vec3" },
+        "motionStart": { "type": "number", "description": "Time origin for the motion formula (default 0). Advanced: give an entity the same pos/vel as another and a negative motionStart to render it N seconds ahead of that entity's trajectory — a clairvoyance shim preview built from the existing motion model, no new system required." },
         "sheet":     { "type": "integer", "minimum": 0, "description": "Index into the scene's \"sheets\" list." },
         "tint":      { "$ref": "#/definitions/vec4", "description": "RGBA multiplier; alpha < 1 renders in the translucent pass (shims)." },
         "anim": {

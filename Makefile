@@ -36,7 +36,7 @@ IMGDIFF   := tools/imgdiff
 TEST_FRAMES := 120
 TEST_TIME   := 2.0
 
-.PHONY: all build bundle run demo demo-controls demo-events demo-menu demo-world clean \
+.PHONY: all build bundle run demo demo-controls demo-events demo-menu demo-world demo-quest clean \
         build-wasm run-wasm \
         deploy \
         test test-unit test-wasm test-parity
@@ -75,6 +75,12 @@ demo-menu: $(BIN)
 # penguin rendered by the translucent pass (a shim preview teaser).
 demo-world: $(BIN)
 	CV_SCENE=src/levels/world.json $(BIN)
+
+# Quest demo (flagship): find 3 keys, open the gated door, dodge a patrolling
+# enemy (with a real shim preview 1s ahead), reach the win room. Bitmap-font
+# text, archetypes, flags/conditions, and set_motion all in one scene.
+demo-quest: $(BIN)
+	CV_SCENE=src/levels/quest.json $(BIN)
 
 $(BIN): $(SRC) $(wildcard src/engine/*.h) $(wildcard src/game/*.h)
 	@mkdir -p build

@@ -10,6 +10,7 @@ void test_events();
 void test_determinism();
 void test_scene_load();
 void test_text();
+void test_quest();
 
 int main() {
     test_json();
@@ -18,6 +19,7 @@ int main() {
     test_determinism();
     test_scene_load();
     test_text();
+    test_quest();
 
     std::printf("%s: %d checks, %d failures\n",
                 g_failures == 0 ? "OK" : "FAILED", g_checks, g_failures);

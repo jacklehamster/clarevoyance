@@ -10,6 +10,11 @@
       "path": "art/tiles.png",
       "cols": 3,
       "rows": 1
+    },
+    {
+      "path": "art/font.png",
+      "cols": 16,
+      "rows": 6
     }
   ],
   "cameras": [
@@ -17,17 +22,44 @@
       "projection": "perspective",
       "position": [
         3.0,
-        7.5,
-        10.0
+        9.0,
+        14.0
       ],
       "target": [
         3.0,
         0.0,
-        3.0
+        4.0
       ]
     }
   ],
   "activeCamera": 0,
+  "archetypes": {
+    "penguin": {
+      "scale": [
+        0.9,
+        0.9
+      ],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {
+          "first": 7,
+          "count": 1,
+          "fps": 0
+        },
+        "walk": {
+          "first": 0,
+          "count": 5,
+          "fps": 10
+        },
+        "chat": {
+          "first": 4,
+          "count": 2,
+          "fps": 6
+        }
+      }
+    }
+  },
   "entities": [
     {
       "id": "floor_0_0",
@@ -750,6 +782,246 @@
       }
     },
     {
+      "id": "floor_0_6",
+      "pos": [
+        0.5,
+        0.0,
+        6.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_1_6",
+      "pos": [
+        1.5,
+        0.0,
+        6.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_2_6",
+      "pos": [
+        2.5,
+        0.0,
+        6.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_3_6",
+      "pos": [
+        3.5,
+        0.0,
+        6.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_4_6",
+      "pos": [
+        4.5,
+        0.0,
+        6.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_5_6",
+      "pos": [
+        5.5,
+        0.0,
+        6.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_0_7",
+      "pos": [
+        0.5,
+        0.0,
+        7.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_1_7",
+      "pos": [
+        1.5,
+        0.0,
+        7.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_2_7",
+      "pos": [
+        2.5,
+        0.0,
+        7.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_3_7",
+      "pos": [
+        3.5,
+        0.0,
+        7.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_4_7",
+      "pos": [
+        4.5,
+        0.0,
+        7.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_5_7",
+      "pos": [
+        5.5,
+        0.0,
+        7.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
       "id": "wall_north",
       "pos": [
         3.0,
@@ -774,7 +1046,7 @@
       "pos": [
         3.0,
         1.0,
-        6.0
+        8.0
       ],
       "scale": [
         6,
@@ -794,10 +1066,10 @@
       "pos": [
         0.0,
         1.0,
-        3.0
+        4.0
       ],
       "scale": [
-        6,
+        8,
         2
       ],
       "billboard": false,
@@ -814,10 +1086,10 @@
       "pos": [
         6.0,
         1.0,
-        3.0
+        4.0
       ],
       "scale": [
-        6,
+        8,
         2
       ],
       "billboard": false,
@@ -830,48 +1102,492 @@
       }
     },
     {
-      "id": "player",
+      "id": "gate_left",
       "pos": [
-        3.0,
-        0.9,
-        4.5
+        1.0,
+        1.0,
+        6.0
       ],
       "scale": [
-        1.8,
-        1.8
+        2,
+        2
       ],
-      "billboard": true,
-      "controlled": true,
-      "speed": 3.0,
+      "billboard": false,
+      "rotation": 0.0,
+      "sheet": 1,
       "anim": {
-        "first": 0,
-        "count": 5,
-        "fps": 10
+        "first": 1,
+        "count": 1,
+        "fps": 0
       }
     },
     {
-      "id": "ghost",
+      "id": "gate_right",
       "pos": [
-        4.2,
-        0.9,
-        2.0
+        5.0,
+        1.0,
+        6.0
       ],
       "scale": [
-        1.8,
-        1.8
+        2,
+        2
+      ],
+      "billboard": false,
+      "rotation": 0.0,
+      "sheet": 1,
+      "anim": {
+        "first": 1,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "door",
+      "pos": [
+        3.0,
+        1.0,
+        6.0
+      ],
+      "scale": [
+        2,
+        2
+      ],
+      "billboard": false,
+      "rotation": 0.0,
+      "sheet": 1,
+      "tint": [
+        0.55,
+        0.35,
+        0.85,
+        1.0
+      ],
+      "anim": {
+        "first": 1,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "player",
+      "archetype": "penguin",
+      "pos": [
+        3.0,
+        0.9,
+        1.0
+      ],
+      "controlled": true,
+      "speed": 3.0,
+      "anim": "walk"
+    },
+    {
+      "id": "enemy",
+      "archetype": "penguin",
+      "pos": [
+        3.0,
+        0.9,
+        3.0
+      ],
+      "vel": [
+        1.2,
+        0,
+        0
+      ],
+      "anim": "walk"
+    },
+    {
+      "id": "enemy_shim",
+      "archetype": "penguin",
+      "pos": [
+        3.0,
+        0.9,
+        3.0
+      ],
+      "vel": [
+        1.2,
+        0,
+        0
+      ],
+      "motionStart": -1.0,
+      "anim": "walk",
+      "tint": [
+        0.5,
+        0.8,
+        1.0,
+        0.35
+      ]
+    },
+    {
+      "id": "patrol_left",
+      "pos": [
+        1.0,
+        0.9,
+        3.0
       ],
       "billboard": true,
       "tint": [
         1,
         1,
         1,
-        0.35
+        0.0
+      ]
+    },
+    {
+      "id": "patrol_right",
+      "pos": [
+        5.0,
+        0.9,
+        3.0
       ],
+      "billboard": true,
+      "tint": [
+        1,
+        1,
+        1,
+        0.0
+      ]
+    },
+    {
+      "id": "key1",
+      "pos": [
+        1.0,
+        0.6,
+        2.0
+      ],
+      "scale": [
+        0.5,
+        0.5
+      ],
+      "billboard": true,
+      "sheet": 1,
       "anim": {
-        "first": 6,
+        "first": 2,
         "count": 1,
         "fps": 0
       }
+    },
+    {
+      "id": "key2",
+      "pos": [
+        5.0,
+        0.6,
+        2.0
+      ],
+      "scale": [
+        0.5,
+        0.5
+      ],
+      "billboard": true,
+      "sheet": 1,
+      "anim": {
+        "first": 2,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "key3",
+      "pos": [
+        3.0,
+        0.6,
+        4.5
+      ],
+      "scale": [
+        0.5,
+        0.5
+      ],
+      "billboard": true,
+      "sheet": 1,
+      "anim": {
+        "first": 2,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "win_marker",
+      "pos": [
+        3.0,
+        0.9,
+        7.3
+      ],
+      "billboard": true,
+      "tint": [
+        1,
+        1,
+        1,
+        0.0
+      ]
+    },
+    {
+      "id": "title",
+      "text": "FIND 3 KEYS",
+      "pos": [
+        0.6,
+        3.4,
+        -0.4
+      ],
+      "charSize": [
+        0.5,
+        0.6
+      ],
+      "sheet": 2,
+      "tint": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "id": "win_text",
+      "text": "WIN",
+      "pos": [
+        2.5,
+        2.4,
+        7.0
+      ],
+      "charSize": [
+        0.6,
+        0.8
+      ],
+      "sheet": 2,
+      "tint": [
+        1,
+        0.9,
+        0.3,
+        1
+      ]
+    }
+  ],
+  "events": [
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "player",
+        "target": "key1",
+        "radius": 0.6
+      },
+      "once": true,
+      "actions": [
+        {
+          "type": "remove",
+          "entity": "key1"
+        },
+        {
+          "type": "add_flag",
+          "flag": "keys",
+          "value": 1
+        },
+        {
+          "type": "dialogue",
+          "id": "key_get"
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "player",
+        "target": "key2",
+        "radius": 0.6
+      },
+      "once": true,
+      "actions": [
+        {
+          "type": "remove",
+          "entity": "key2"
+        },
+        {
+          "type": "add_flag",
+          "flag": "keys",
+          "value": 1
+        },
+        {
+          "type": "dialogue",
+          "id": "key_get"
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "player",
+        "target": "key3",
+        "radius": 0.6
+      },
+      "once": true,
+      "actions": [
+        {
+          "type": "remove",
+          "entity": "key3"
+        },
+        {
+          "type": "add_flag",
+          "flag": "keys",
+          "value": 1
+        },
+        {
+          "type": "dialogue",
+          "id": "key_get"
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "player",
+        "target": "door",
+        "radius": 1.2
+      },
+      "condition": {
+        "flag": "keys",
+        "op": "ge",
+        "value": 3
+      },
+      "once": true,
+      "actions": [
+        {
+          "type": "remove",
+          "entity": "door"
+        },
+        {
+          "type": "set_flag",
+          "flag": "door_open",
+          "value": true
+        },
+        {
+          "type": "dialogue",
+          "id": "door_open"
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "player",
+        "target": "win_marker",
+        "radius": 1.0
+      },
+      "condition": {
+        "flag": "door_open",
+        "value": true
+      },
+      "once": true,
+      "actions": [
+        {
+          "type": "dialogue",
+          "id": "victory"
+        },
+        {
+          "type": "set_anim",
+          "entity": "player",
+          "clip": "chat"
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "enemy",
+        "target": "patrol_right",
+        "radius": 0.4
+      },
+      "once": false,
+      "actions": [
+        {
+          "type": "set_motion",
+          "entity": "enemy",
+          "vel": [
+            -1.2,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "enemy",
+        "target": "patrol_left",
+        "radius": 0.4
+      },
+      "once": false,
+      "actions": [
+        {
+          "type": "set_motion",
+          "entity": "enemy",
+          "vel": [
+            1.2,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "enemy_shim",
+        "target": "patrol_right",
+        "radius": 0.4
+      },
+      "once": false,
+      "actions": [
+        {
+          "type": "set_motion",
+          "entity": "enemy_shim",
+          "vel": [
+            -1.2,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "enemy_shim",
+        "target": "patrol_left",
+        "radius": 0.4
+      },
+      "once": false,
+      "actions": [
+        {
+          "type": "set_motion",
+          "entity": "enemy_shim",
+          "vel": [
+            1.2,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "player",
+        "target": "enemy",
+        "radius": 0.6
+      },
+      "once": false,
+      "actions": [
+        {
+          "type": "dialogue",
+          "id": "ouch"
+        },
+        {
+          "type": "set_motion",
+          "entity": "player",
+          "vel": [
+            0,
+            0,
+            -4
+          ]
+        }
+      ]
     }
   ],
   "controls": {
