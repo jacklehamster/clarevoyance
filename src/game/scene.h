@@ -14,10 +14,64 @@
 #include <vector>
 
 #include "world_state.h"
-#include "events.h"
 #include "input.h"
 
 namespace cv {
+
+// Per-entity, game-side attributes that never touch the GPU Instance (which must
+// stay a standard-layout block of floats). Parsed from the entity JSON; the
+// EventSystem keeps a mutable working copy alongside the working instances.
+struct EntityAttrs {
+    bool  controlled = false;   // movement input applies to every controlled entity
+    float speed      = 3.0f;    // world units / second when moving
+};
+
+// --- Event data (trigger / condition / action rules) -------------------------
+// Pure data parsed from the scene file; evaluated by the EventSystem.
+
+struct Trigger {
+    enum class Type { Start, Proximity, Input };
+    enum class Edge { Pressed, Released, Held };   // input: which edge fires
+    Type type = Type::Start;
+    std::string entity;     // proximity: the moving entity (by data-file name)
+    std::string target;     // proximity: the entity it approaches
+    float radius = 1.0f;    // proximity: fire when distance <= radius
+
+    std::string action;     // input: the abstract action name to watch
+    Edge edge = Edge::Pressed;  // input: fire on pressed / released / held
+};
+
+struct Condition {
+    bool present = false;   // no condition → always passes
+    std::string flag;
+    bool value = true;      // condition passes when flags[flag] == value
+};
+
+struct Action {
+    enum class Type { Dialogue, SetFlag, SetAnim, SetMotion, Remove,
+                      ToggleControlled, SetControlled };
+    Type type = Type::Dialogue;
+
+    std::string id;         // dialogue: line id
+    std::string flag;       // set_flag: flag name
+    bool value = true;      // set_flag / set_controlled: value
+
+    std::string entity;     // set_anim / set_motion / remove / *_controlled: target
+    int   first = 0;        // set_anim: first frame
+    int   count = 1;        // set_anim: frame count
+    float fps   = 0.0f;     // set_anim: frames per second
+
+    Vec3  vel   = {0, 0, 0}; // set_motion: new velocity
+    Vec3  accel = {0, 0, 0}; // set_motion: new acceleration
+};
+
+struct Event {
+    Trigger trigger;
+    Condition condition;
+    std::vector<Action> actions;
+    bool once = true;       // fire at most once
+    bool fired = false;     // runtime guard
+};
 
 // Sprite-sheet description pulled from the scene file (the renderer needs it at init).
 struct SheetInfo {
@@ -44,5 +98,20 @@ struct Scene {
 
 // Parse a scene JSON file. On failure returns false and fills `error`.
 bool loadScene(const char* path, Scene& out, std::string& error);
+
+// Apply directional movement to every controlled entity.
+//
+// Held directional actions (move_north/-south/-west/-east) sum into a world-space
+// direction (+X east, +Z south, +Y up): north = -Z, south = +Z, west = -X,
+// east = +X. The direction is normalised, scaled by each entity's speed, and
+// applied as velocity using the same rebase-to-current-position + motionStart=now
+// approach as the set_motion action. An upsert is emitted only when an entity's
+// desired velocity actually differs from its current velocity (no per-frame churn).
+void applyMovement(const ResolvedActions& actions,
+                   const std::unordered_map<EntityId, EntityAttrs>& attrs,
+                   std::unordered_map<EntityId, Instance>& entities,
+                   float now,
+                   const std::unordered_map<EntityId, Vec3>& positions,
+                   Diff& out);
 
 } // namespace cv

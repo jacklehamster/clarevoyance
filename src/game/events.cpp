@@ -19,7 +19,7 @@ bool EventSystem::conditionPasses(const Condition& c) const {
     return flag(c.flag) == c.value;
 }
 
-void EventSystem::runActions(Scene& scene, float now,
+void EventSystem::runActions(const Scene& scene, float now,
                              const std::unordered_map<EntityId, Vec3>& positions,
                              const std::vector<Action>& actions, Diff& out) {
     for (const Action& a : actions) {

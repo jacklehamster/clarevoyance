@@ -27,6 +27,7 @@
 
 #include "renderer.h"
 #include "screenshot.h"
+#include "sdl_input.h"
 #include "scene.h"
 #include "events.h"
 #include "input.h"
@@ -115,7 +116,8 @@ struct LoopContext {
     Scene*       scene;
     EventSystem* events;
     std::unordered_map<EntityId, Instance>* entities;  // working copy for sim
-    InputSource* inputSrc;   // pluggable input: keyboard, replay, null (cutscenes)
+    InputSource* inputSrc;   // pluggable input: bindings, replay, null (cutscenes)
+    InputFrame  prevInput;   // last frame's key state (edge detection across frames)
     // hot-reload (desktop scene mode only): re-load the scene file when its
     // mtime changes, checked once per second
     std::string scenePath;
@@ -155,7 +157,8 @@ static void maybeHotReloadScene(LoopContext* ctx) {
     delete ctx->inputSrc;
     ctx->inputSrc = ctx->scene->bindings.empty()
         ? static_cast<InputSource*>(new NullInputSource())
-        : new KeyboardInputSource(ctx->scene->bindings);
+        : new BindingsInputSource(ctx->scene->bindings);
+    ctx->prevInput = InputFrame{};
     SDL_Log("Scene hot-reloaded: %s", ctx->scenePath.c_str());
 }
 #endif
@@ -201,7 +204,11 @@ static void frame(void* arg) {
         for (const auto& kv : *ctx->entities)
             positions[kv.first] = positionAt(kv.second, t);
 
-        ResolvedActions actions = ctx->inputSrc->poll(sdlEvents);
+        // The ENGINE translates SDL events into the device-agnostic InputFrame;
+        // the game-layer input source only ever sees key names, never SDL.
+        InputFrame inputFrame = buildInputFrame(sdlEvents, ctx->prevInput);
+        ctx->prevInput = inputFrame;
+        ResolvedActions actions = ctx->inputSrc->poll(inputFrame);
 
         Diff diff;
         // Free movement: applies a velocity to every controlled entity.
@@ -385,9 +392,10 @@ int main(int, char**) {
         // renderer all share one logical instance map (no second copy to sync).
         sceneEntities = &events->entities();
         total = static_cast<int>(scene->initialState.instances.size());
-        // Choose input source: keyboard when bindings are defined, null otherwise.
+        // Choose input source: bindings when defined, null otherwise. The source
+        // copies the bindings, so it stays valid across scene unload/reload.
         if (!scene->bindings.empty())
-            inputSrc = new KeyboardInputSource(scene->bindings);
+            inputSrc = new BindingsInputSource(scene->bindings);
         else
             inputSrc = new NullInputSource();
     } else {
@@ -431,7 +439,7 @@ int main(int, char**) {
         0, 0, total, true,
         testFrames, fixedTime, doScreenshot, 0, false,
         scene, events, sceneEntities, inputSrc,
-        {}, 0, 0
+        InputFrame{}, {}, 0, 0
     };
     // fps=0  → requestAnimationFrame (display-synced, pauses in background) — interactive
     // fps=60 → setTimeout at 60 fps (runs even in hidden tabs)           — test mode
@@ -446,7 +454,7 @@ int main(int, char**) {
         0, 0, total, true,
         testFrames, fixedTime, doScreenshot, 0, false,
         scene, events, sceneEntities, inputSrc,
-        {}, 0, 0
+        InputFrame{}, {}, 0, 0
     };
     if (scene) {
         ctx.scenePath = scenePath;
