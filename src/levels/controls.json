@@ -1,4 +1,5 @@
 {
+  "version": 1,
   "sheet": { "path": "art/penguin.png", "cols": 16, "rows": 1 },
 
   "cameras": [

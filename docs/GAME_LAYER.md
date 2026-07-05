@@ -211,6 +211,14 @@ sending Mochi leaping away via `set_motion`.
 }
 ```
 
+`version` is the scene format version (currently 1). The loader warns on stderr when
+it is missing and rejects versions newer than it supports. The loader is **strict**
+(see the MAP_EDITOR spec): unknown trigger/action types, unknown condition ops,
+duplicate entity ids, entity/archetype/clip references that don't resolve, and
+malformed vectors (wrong length) are hard errors with contextual messages such as
+`events[3].actions[0]: unknown action type 'set_flg'` — typos fail the load instead
+of silently becoming defaults.
+
 `sheets` lists every sprite sheet the scene uses (loaded into the renderer's texture
 array in order — see ARCHITECTURE.md); the singular `"sheet"` object is still accepted
 as `sheets[0]`. An entity's optional `"sheet"` field is an index into that list

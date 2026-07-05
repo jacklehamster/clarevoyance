@@ -32,6 +32,7 @@ static void test_scene_sheets() {
         Scene scene;
         std::string err;
         bool ok = loadFromString(R"({
+            "version": 1,
             "sheets": [
                 { "path": "art/penguin.png", "cols": 16, "rows": 1 },
                 { "path": "art/tiles.png",   "cols": 2,  "rows": 1 }
@@ -53,6 +54,7 @@ static void test_scene_sheets() {
         Scene scene;
         std::string err;
         bool ok = loadFromString(R"({
+            "version": 1,
             "sheet": { "path": "art/penguin.png", "cols": 16, "rows": 1 },
             "entities": [ { "id": "a", "pos": [0, 0, 0] } ]
         })", scene, err);
@@ -68,6 +70,7 @@ static void test_scene_orientation() {
     Scene scene;
     std::string err;
     bool ok = loadFromString(R"({
+        "version": 1,
         "entities": [
             { "id": "floor", "pos": [0, 0, 0], "billboard": false,
               "rotation": 0.5, "pitch": -1.5707963 },
@@ -95,6 +98,7 @@ static void test_scene_conditions() {
     Scene scene;
     std::string err;
     bool ok = loadFromString(R"({
+        "version": 1,
         "entities": [ { "id": "a", "pos": [0, 0, 0] } ],
         "events": [
             {
@@ -148,6 +152,7 @@ static void test_scene_archetypes() {
     Scene scene;
     std::string err;
     bool ok = loadFromString(R"({
+        "version": 1,
         "archetypes": {
             "penguin": {
                 "scale": [0.9, 0.9], "billboard": true, "sheet": 0, "speed": 2.5,
@@ -209,11 +214,135 @@ static void test_scene_archetypes() {
     CHECK(scene.clipOf(scene.idOf("a"), "nope") == nullptr);
 }
 
+// Strict validation: every error class rejects the scene with a message that
+// carries the offending string and its context path.
+static void test_scene_strict() {
+    // load must FAIL and the error must contain `expect`.
+    auto loadFails = [](const std::string& json, const char* expect) {
+        Scene scene;
+        std::string err;
+        bool ok = loadFromString(json, scene, err);
+        if (ok) {
+            std::printf("  expected failure containing \"%s\" but scene loaded\n", expect);
+            return false;
+        }
+        if (err.find(expect) == std::string::npos) {
+            std::printf("  error \"%s\" does not contain \"%s\"\n", err.c_str(), expect);
+            return false;
+        }
+        return true;
+    };
+
+    // Unknown trigger type.
+    CHECK(loadFails(R"({ "version": 1,
+        "entities": [ { "id": "a", "pos": [0,0,0] } ],
+        "events": [ { "trigger": { "type": "proximty" } } ] })",
+        "events[0].trigger: unknown trigger type 'proximty'"));
+
+    // Unknown action type (with the event/action indices in the context).
+    CHECK(loadFails(R"({ "version": 1,
+        "entities": [ { "id": "a", "pos": [0,0,0] } ],
+        "events": [
+            { "trigger": { "type": "start" }, "actions": [ { "type": "dialogue", "id": "x" } ] },
+            { "trigger": { "type": "start" },
+              "actions": [ { "type": "dialogue", "id": "y" },
+                           { "type": "set_flg", "flag": "f" } ] }
+        ] })",
+        "events[1].actions[1]: unknown action type 'set_flg'"));
+
+    // Unknown condition op.
+    CHECK(loadFails(R"({ "version": 1,
+        "entities": [ { "id": "a", "pos": [0,0,0] } ],
+        "events": [ { "trigger": { "type": "start" },
+                      "condition": { "flag": "x", "op": "gte", "value": 1 } } ] })",
+        "events[0].condition: unknown condition op 'gte'"));
+
+    // Unknown op nested inside a composition keeps the full path.
+    CHECK(loadFails(R"({ "version": 1,
+        "entities": [ { "id": "a", "pos": [0,0,0] } ],
+        "events": [ { "trigger": { "type": "start" },
+                      "condition": { "all": [ { "flag": "x", "op": "max" } ] } } ] })",
+        "events[0].condition.all[0]: unknown condition op 'max'"));
+
+    // Duplicate entity ids.
+    CHECK(loadFails(R"({ "version": 1,
+        "entities": [ { "id": "a", "pos": [0,0,0] },
+                      { "id": "a", "pos": [1,0,0] } ] })",
+        "entities[1]: duplicate entity id 'a'"));
+
+    // Trigger referencing an entity not defined in the scene.
+    CHECK(loadFails(R"({ "version": 1,
+        "entities": [ { "id": "a", "pos": [0,0,0] } ],
+        "events": [ { "trigger": { "type": "proximity", "entity": "a", "target": "ghost",
+                                   "radius": 1 } } ] })",
+        "events[0].trigger: 'target' references unknown entity 'ghost'"));
+
+    // Action referencing an entity not defined in the scene.
+    CHECK(loadFails(R"({ "version": 1,
+        "entities": [ { "id": "a", "pos": [0,0,0] } ],
+        "events": [ { "trigger": { "type": "start" },
+                      "actions": [ { "type": "remove", "entity": "b" } ] } ] })",
+        "events[0].actions[0]: 'entity' references unknown entity 'b'"));
+
+    // Unknown archetype reference.
+    CHECK(loadFails(R"({ "version": 1,
+        "archetypes": { "penguin": { "scale": [1,1] } },
+        "entities": [ { "id": "a", "archetype": "pengiun", "pos": [0,0,0] } ] })",
+        "entities[0]: unknown archetype 'pengiun'"));
+
+    // Clip name that the archetype does not define.
+    CHECK(loadFails(R"({ "version": 1,
+        "archetypes": { "penguin": { "clips": { "walk": { "first": 0, "count": 5, "fps": 10 } } } },
+        "entities": [ { "id": "a", "archetype": "penguin", "pos": [0,0,0], "anim": "wlk" } ] })",
+        "entities[0].anim: unknown clip 'wlk'"));
+
+    // Clip name on an entity with no archetype.
+    CHECK(loadFails(R"({ "version": 1,
+        "entities": [ { "id": "a", "pos": [0,0,0], "anim": "walk" } ] })",
+        "entities[0].anim: clip name 'walk' requires an archetype"));
+
+    // set_anim clip that does not resolve for the target entity.
+    CHECK(loadFails(R"({ "version": 1,
+        "archetypes": { "penguin": { "clips": { "walk": { "first": 0, "count": 5, "fps": 10 } } } },
+        "entities": [ { "id": "a", "archetype": "penguin", "pos": [0,0,0] } ],
+        "events": [ { "trigger": { "type": "start" },
+                      "actions": [ { "type": "set_anim", "entity": "a", "clip": "run" } ] } ] })",
+        "events[0].actions[0]: clip 'run' does not resolve for entity 'a'"));
+
+    // Malformed vec3 (wrong length) and vec2.
+    CHECK(loadFails(R"({ "version": 1,
+        "entities": [ { "id": "a", "pos": [0, 0] } ] })",
+        "entities[0].pos: expected an array of 3 numbers"));
+    CHECK(loadFails(R"({ "version": 1,
+        "entities": [ { "id": "a", "pos": [0,0,0], "scale": [1, 1, 1] } ] })",
+        "entities[0].scale: expected an array of 2 numbers"));
+    CHECK(loadFails(R"({ "version": 1,
+        "entities": [ { "id": "a", "pos": [0,0,0], "tint": [1, 1, 1] } ] })",
+        "entities[0].tint: expected an array of 4 numbers"));
+    CHECK(loadFails(R"({ "version": 1,
+        "cameras": [ { "position": [1, "x", 3] } ] })",
+        "cameras[0].position: expected an array of 3 numbers"));
+
+    // Version newer than the loader supports.
+    CHECK(loadFails(R"({ "version": 2, "entities": [ { "id": "a", "pos": [0,0,0] } ] })",
+        "unsupported scene version 2"));
+
+    // Missing version still loads (warns on stderr only).
+    {
+        Scene scene;
+        std::string err;
+        bool ok = loadFromString(R"({ "entities": [ { "id": "a", "pos": [0,0,0] } ] })",
+                                 scene, err);
+        CHECK_MSG(ok, err.c_str());
+    }
+}
+
 void test_scene_load() {
     test_scene_sheets();
     test_scene_orientation();
     test_scene_conditions();
     test_scene_archetypes();
+    test_scene_strict();
     const char* dir = "src/levels";
     CHECK_MSG(fs::is_directory(dir), "run from the repo root");
     if (!fs::is_directory(dir)) return;
