@@ -31,6 +31,7 @@
 #include "scene.h"
 #include "events.h"
 #include "input.h"
+#include "sim.h"
 
 using namespace cv;
 
@@ -60,6 +61,10 @@ static const float GRID_STEP   = GRID_EXTENT / GRID_W;
 
 static const int WINDOW_W = 1280;
 static const int WINDOW_H = 720;
+
+// Accumulator cap: after a pause/breakpoint/background tab, never try to catch
+// up more than this much sim time in one frame (avoids the spiral of death).
+static const double MAX_ACCUM = 0.25;
 
 // Five animation flavours to cycle through so the grid looks varied.
 static const struct { int first; int count; } ANIMS[] = {
@@ -117,10 +122,20 @@ struct LoopContext {
     EventSystem* events;
     std::unordered_map<EntityId, Instance>* entities;  // working copy for sim
     InputSource* inputSrc;   // pluggable input: bindings, replay, null (cutscenes)
-    InputFrame  prevInput;   // last frame's key state (edge detection across frames)
+    InputFrame  prevInput = {};  // last frame's key state (edge detection across frames)
+    // fixed-timestep sim: wall time fills an accumulator; the sim advances in
+    // whole SIM_DT ticks; rendering uses the continuous time clock.time()+accum
+    SimClock    clock = {};
+    double      accum = 0.0;
+    Uint64      lastFrameTicks = 0;  // wall-clock ms at previous frame (SDL_GetTicks64)
+    // Pending tick-stamped input command: down-state mirrors the latest frame;
+    // pressed/released edges accumulate until a sim tick consumes them (so an
+    // edge landing on a frame that runs zero ticks is not lost, and edges never
+    // repeat across multiple ticks within one frame).
+    InputFrame  pending = {};
     // hot-reload (desktop scene mode only): re-load the scene file when its
     // mtime changes, checked once per second
-    std::string scenePath;
+    std::string scenePath = {};
     time_t      sceneMtime     = 0;
     Uint64      lastReloadCheck = 0;
 };
@@ -163,6 +178,32 @@ static void maybeHotReloadScene(LoopContext* ctx) {
 }
 #endif
 
+// One simulation tick for the scene mode: resolve inputs, apply movement,
+// evaluate events, apply the resulting Diff. Pure CPU — sim time comes from
+// the tick clock, never the wall clock. `actions` is the tick's resolved input
+// command (edges appear on exactly one tick).
+static void stepScene(LoopContext* ctx, double simTime, const ResolvedActions& actions) {
+    float now = static_cast<float>(simTime);
+
+    // ctx->entities aliases the event system's working copy, so movement,
+    // events and the renderer all see one logical state.
+    std::unordered_map<EntityId, Vec3> positions;
+    for (const auto& kv : *ctx->entities)
+        positions[kv.first] = positionAt(kv.second, now);
+
+    Diff diff;
+    // Free movement: applies a velocity to every controlled entity.
+    applyMovement(actions, ctx->events->attrs(), *ctx->entities, now, positions, diff);
+    // Events (including input triggers) run against the resolved actions.
+    ctx->events->update(*ctx->scene, now, positions, actions, diff);
+    // Keep removals in sync (movement/event upserts already write *ctx->entities
+    // since it aliases the event system's working copy).
+    for (const auto& up : diff.upserts) (*ctx->entities)[up.first] = up.second;
+    for (EntityId id : diff.removals)   ctx->entities->erase(id);
+    if (!diff.upserts.empty() || !diff.removals.empty())
+        ctx->renderer->applyDiff(diff);
+}
+
 static void frame(void* arg) {
     LoopContext* ctx = static_cast<LoopContext*>(arg);
 
@@ -187,43 +228,64 @@ static void frame(void* arg) {
         sdlEvents.push_back(event);
     }
 
-    float t = ctx->fixedTime >= 0.0f
-        ? ctx->fixedTime
-        : (float)(SDL_GetTicks64() - ctx->startTicks) / 1000.0f;
-
 #if !defined(__EMSCRIPTEN__)
     maybeHotReloadScene(ctx);
 #endif
 
-    if (ctx->scene) {
-        // Data-driven script layer: advance the sim, apply keyboard movement,
-        // evaluate events, apply the resulting Diff. The camera is fixed by the
-        // scene (no orbit). ctx->entities aliases the event system's working copy,
-        // so movement, events and the renderer all see one logical state.
-        std::unordered_map<EntityId, Vec3> positions;
-        for (const auto& kv : *ctx->entities)
-            positions[kv.first] = positionAt(kv.second, t);
+    // The ENGINE translates SDL events into the device-agnostic InputFrame once
+    // per rendered frame; the game-layer input source only ever sees key names,
+    // never SDL. Edges merge into the pending tick command until consumed.
+    InputFrame inputFrame = buildInputFrame(sdlEvents, ctx->prevInput);
+    ctx->prevInput = inputFrame;
+    ctx->pending.down = inputFrame.down;
+    ctx->pending.pressed.insert(inputFrame.pressed.begin(), inputFrame.pressed.end());
+    ctx->pending.released.insert(inputFrame.released.begin(), inputFrame.released.end());
 
-        // The ENGINE translates SDL events into the device-agnostic InputFrame;
-        // the game-layer input source only ever sees key names, never SDL.
-        InputFrame inputFrame = buildInputFrame(sdlEvents, ctx->prevInput);
-        ctx->prevInput = inputFrame;
-        ResolvedActions actions = ctx->inputSrc->poll(inputFrame);
+    // Advance the accumulator from the wall clock (capped), then step the sim
+    // in whole SIM_DT ticks. CV_FIXED_TIME maps to a fixed tick count instead:
+    // the clock was pinned at startup and one step runs per frame at that
+    // constant sim time, so test screenshots stay deterministic.
+    Uint64 nowMs = SDL_GetTicks64();
+    if (ctx->fixedTime < 0.0f) {
+        ctx->accum += (double)(nowMs - ctx->lastFrameTicks) / 1000.0;
+        if (ctx->accum > MAX_ACCUM) ctx->accum = MAX_ACCUM;
+    }
+    ctx->lastFrameTicks = nowMs;
 
-        Diff diff;
-        // Free movement: applies a velocity to every controlled entity.
-        applyMovement(actions, ctx->events->attrs(), *ctx->entities, t, positions, diff);
-        // Events (including input triggers) run against the resolved actions.
-        ctx->events->update(*ctx->scene, t, positions, actions, diff);
-        // Keep removals in sync (movement/event upserts already write *ctx->entities
-        // since it aliases the event system's working copy).
-        for (const auto& up : diff.upserts) (*ctx->entities)[up.first] = up.second;
-        for (EntityId id : diff.removals)   ctx->entities->erase(id);
-        if (!diff.upserts.empty() || !diff.removals.empty())
-            ctx->renderer->applyDiff(diff);
+    if (ctx->fixedTime >= 0.0f) {
+        // Deterministic test mode: constant tick, one step per rendered frame.
+        if (ctx->scene) {
+            ResolvedActions actions = ctx->inputSrc->poll(ctx->pending);
+            ctx->pending.pressed.clear();
+            ctx->pending.released.clear();
+            stepScene(ctx, ctx->clock.time(), actions);
+        }
     } else {
+        while (ctx->accum >= SIM_DT) {
+            if (ctx->scene) {
+                // Resolve the tick command — a pure function of the pending
+                // frame and the bindings. Edges are cleared after the first
+                // tick so pressed/released never repeat; down-state persists.
+                ResolvedActions actions = ctx->inputSrc->poll(ctx->pending);
+                ctx->pending.pressed.clear();
+                ctx->pending.released.clear();
+                stepScene(ctx, ctx->clock.time(), actions);
+            }
+            ctx->clock.tick++;
+            ctx->accum -= SIM_DT;
+        }
+    }
+
+    // Render at the CONTINUOUS time — sim time plus the unsimulated remainder —
+    // so visuals never stutter. The analytic motion model (pos + vel*t + ½at²)
+    // makes this exact, not an approximation.
+    float t = ctx->fixedTime >= 0.0f
+        ? ctx->fixedTime
+        : static_cast<float>(ctx->clock.time() + ctx->accum);
+
+    if (!ctx->scene) {
         // Stress-test demo: the only thing that changes each frame is the
-        // camera orbit (uniforms only).
+        // camera orbit (uniforms only) — render-side, driven by continuous time.
         Diff diff;
         diff.replaceCameras  = true;
         diff.cameras         = buildCameras(t * 0.1f);
@@ -438,9 +500,12 @@ int main(int, char**) {
         startTicks, startTicks,
         0, 0, total, true,
         testFrames, fixedTime, doScreenshot, 0, false,
-        scene, events, sceneEntities, inputSrc,
-        InputFrame{}, {}, 0, 0
+        scene, events, sceneEntities, inputSrc
     };
+    ctx->lastFrameTicks = startTicks;
+    // CV_FIXED_TIME maps to a fixed tick count: tick = round(T / SIM_DT).
+    if (fixedTime >= 0.0f)
+        ctx->clock.tick = static_cast<uint64_t>(std::llround(fixedTime / SIM_DT));
     // fps=0  → requestAnimationFrame (display-synced, pauses in background) — interactive
     // fps=60 → setTimeout at 60 fps (runs even in hidden tabs)           — test mode
     // simulate_infinite_loop=1: main() never returns; exit(0) terminates and
@@ -453,9 +518,12 @@ int main(int, char**) {
         startTicks, startTicks,
         0, 0, total, true,
         testFrames, fixedTime, doScreenshot, 0, false,
-        scene, events, sceneEntities, inputSrc,
-        InputFrame{}, {}, 0, 0
+        scene, events, sceneEntities, inputSrc
     };
+    ctx.lastFrameTicks = startTicks;
+    // CV_FIXED_TIME maps to a fixed tick count: tick = round(T / SIM_DT).
+    if (fixedTime >= 0.0f)
+        ctx.clock.tick = static_cast<uint64_t>(std::llround(fixedTime / SIM_DT));
     if (scene) {
         ctx.scenePath = scenePath;
         struct stat st{};
