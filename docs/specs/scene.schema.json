@@ -1,0 +1,346 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://clare.dobuki.net/specs/scene.schema.json",
+  "title": "Clarevoyance scene format, version 1",
+  "description": "The normative definition of the scene JSON format (MAP_EDITOR spec). Loaded by src/game/scene.cpp; docs/GAME_LAYER.md references this file and does not redefine it. The C++ loader is strict: unknown trigger/action types, unknown condition ops, duplicate entity ids, unresolved entity/archetype/clip references, and malformed vectors are load errors.",
+  "type": "object",
+  "properties": {
+    "version": {
+      "description": "Scene format version. The loader warns (stderr) when missing and rejects versions newer than it supports.",
+      "type": "integer",
+      "const": 1
+    },
+    "sheet": {
+      "description": "Backward-compatible singular form of \"sheets\": accepted as sheets[0].",
+      "$ref": "#/definitions/sheet"
+    },
+    "sheets": {
+      "description": "Every sprite sheet the scene uses, loaded into the renderer's texture array in order. An entity's \"sheet\" field indexes this list.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/sheet" }
+    },
+    "cameras": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/camera" }
+    },
+    "activeCamera": {
+      "description": "Index into \"cameras\" of the camera active at load (default 0).",
+      "type": "integer",
+      "minimum": 0
+    },
+    "archetypes": {
+      "description": "Named entity templates. An archetype's fields apply as defaults to every entity that references it (entity fields override key-by-key); its \"clips\" map names animation ranges.",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/archetype" }
+    },
+    "entities": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/entity" }
+    },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/event" }
+    },
+    "controls": {
+      "type": "object",
+      "properties": {
+        "bindings": {
+          "description": "Device-agnostic key name (\"w\", \"up\", \"space\") to abstract action name (\"move_north\", \"toggle_extra\").",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "dialogueText": {
+      "description": "Optional: when present, every 'dialogue' action ALSO spawns the line's id as on-screen text at this position for ~3 seconds (180 ticks), in addition to the CV_DIALOGUE printf it always emits.",
+      "type": "object",
+      "properties": {
+        "pos":      { "$ref": "#/definitions/vec3" },
+        "charSize": { "$ref": "#/definitions/vec2", "description": "Per-glyph [width, height] in world units (default [0.5, 0.5])." },
+        "sheet":    { "type": "integer", "minimum": 0, "description": "Index into the scene's \"sheets\" list (the font sheet)." },
+        "tint":     { "$ref": "#/definitions/vec4" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["version"],
+
+  "definitions": {
+    "vec2": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "vec3": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "vec4": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 4,
+      "maxItems": 4
+    },
+
+    "sheet": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string", "description": "Image path relative to the content root (identical on desktop and WASM)." },
+        "cols": { "type": "integer", "minimum": 1 },
+        "rows": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+
+    "camera": {
+      "type": "object",
+      "properties": {
+        "projection": { "enum": ["perspective", "orthographic"] },
+        "position": { "$ref": "#/definitions/vec3" },
+        "target":   { "$ref": "#/definitions/vec3" },
+        "up":       { "$ref": "#/definitions/vec3" },
+        "fovY":            { "type": "number", "description": "Vertical field of view, radians (perspective)." },
+        "orthoHalfHeight": { "type": "number", "description": "Half the view height in world units (orthographic)." }
+      },
+      "additionalProperties": false
+    },
+
+    "clip": {
+      "description": "A named animation range on a sprite sheet.",
+      "type": "object",
+      "properties": {
+        "first": { "type": "integer", "minimum": 0, "description": "First frame index." },
+        "count": { "type": "integer", "minimum": 1, "description": "Frame count." },
+        "fps":   { "type": "number", "minimum": 0, "description": "Frames per second (0 = static frame)." }
+      },
+      "additionalProperties": false
+    },
+
+    "animInline": {
+      "description": "Raw animation range (valid, but authored content should prefer named clips).",
+      "type": "object",
+      "properties": {
+        "first": { "type": "integer", "minimum": 0 },
+        "count": { "type": "integer", "minimum": 1 },
+        "fps":   { "type": "number", "minimum": 0 },
+        "start": { "type": "number", "description": "Animation time origin (sim seconds)." }
+      },
+      "additionalProperties": false
+    },
+
+    "entityFields": {
+      "description": "Fields shared by entities and archetype defaults.",
+      "type": "object",
+      "properties": {
+        "pos":       { "$ref": "#/definitions/vec3" },
+        "scale":     { "$ref": "#/definitions/vec2" },
+        "billboard": { "type": "boolean", "description": "true = always face the camera; false = oriented quad (rotation/pitch)." },
+        "rotation":  { "type": "number", "description": "Yaw about world-up, radians (non-billboard only)." },
+        "pitch":     { "type": "number", "description": "Tilt about the local right axis, radians; -pi/2 lies the quad flat as a floor tile (non-billboard only)." },
+        "vel":       { "$ref": "#/definitions/vec3" },
+        "accel":     { "$ref": "#/definitions/vec3" },
+        "motionStart": { "type": "number", "description": "Time origin for the motion formula (default 0). Advanced: give an entity the same pos/vel as another and a negative motionStart to render it N seconds ahead of that entity's trajectory — a clairvoyance shim preview built from the existing motion model, no new system required." },
+        "sheet":     { "type": "integer", "minimum": 0, "description": "Index into the scene's \"sheets\" list." },
+        "tint":      { "$ref": "#/definitions/vec4", "description": "RGBA multiplier; alpha < 1 renders in the translucent pass (shims)." },
+        "anim": {
+          "oneOf": [
+            { "type": "string", "description": "Clip name, resolved through the entity's archetype." },
+            { "$ref": "#/definitions/animInline" }
+          ]
+        },
+        "controlled": { "type": "boolean", "description": "Movement input applies to every controlled entity." },
+        "speed":      { "type": "number", "minimum": 0, "description": "Movement rate, world units / second." },
+        "text":       { "type": "string", "description": "Text entities only: the string to render. Expands to one glyph Instance per character (src/game/text.h); the entity's \"id\" binds to the first glyph, and 'remove' despawns the whole string as one unit." },
+        "charSize":   { "$ref": "#/definitions/vec2", "description": "Text entities only: per-glyph [width, height] in world units (default [0.5, 0.5])." }
+      }
+    },
+
+    "archetype": {
+      "allOf": [ { "$ref": "#/definitions/entityFields" } ],
+      "properties": {
+        "clips": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/clip" }
+        }
+      }
+    },
+
+    "entity": {
+      "allOf": [ { "$ref": "#/definitions/entityFields" } ],
+      "properties": {
+        "id":        { "type": "string", "minLength": 1, "description": "Unique entity name; events reference entities by this name." },
+        "archetype": { "type": "string", "description": "Name of a template in the top-level \"archetypes\" object." }
+      },
+      "required": ["id"]
+    },
+
+    "trigger": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": { "type": { "const": "start" } },
+          "required": ["type"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type":   { "const": "proximity" },
+            "entity": { "type": "string", "description": "The moving entity (by id)." },
+            "target": { "type": "string", "description": "The entity it approaches (by id)." },
+            "radius": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "required": ["type", "entity", "target"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type":   { "const": "input" },
+            "action": { "type": "string", "description": "Abstract action name (see controls.bindings)." },
+            "edge":   { "enum": ["pressed", "released", "held"], "default": "pressed" }
+          },
+          "required": ["type", "action"],
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "condition": {
+      "description": "A flag comparison, or a recursive all/any composition. Flags are numeric: JSON booleans are 0/1; a flag never set reads 0.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "flag":  { "type": "string" },
+            "value": { "type": ["number", "boolean"], "default": true },
+            "op":    { "enum": ["eq", "ne", "lt", "le", "gt", "ge"], "default": "eq" }
+          },
+          "required": ["flag"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "all": { "type": "array", "items": { "$ref": "#/definitions/condition" } }
+          },
+          "required": ["all"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "any": { "type": "array", "items": { "$ref": "#/definitions/condition" } }
+          },
+          "required": ["any"],
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "dialogue" },
+            "id":   { "type": "string" }
+          },
+          "required": ["type", "id"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type":  { "const": "set_flag" },
+            "flag":  { "type": "string" },
+            "value": { "type": ["number", "boolean"], "default": true }
+          },
+          "required": ["type", "flag"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type":  { "const": "add_flag" },
+            "flag":  { "type": "string" },
+            "value": { "type": "number", "default": 1 }
+          },
+          "required": ["type", "flag"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "description": "Either a named clip (resolved through the target entity's archetype) or raw first/count/fps.",
+          "properties": {
+            "type":   { "const": "set_anim" },
+            "entity": { "type": "string" },
+            "clip":   { "type": "string" },
+            "first":  { "type": "integer", "minimum": 0 },
+            "count":  { "type": "integer", "minimum": 1 },
+            "fps":    { "type": "number", "minimum": 0 }
+          },
+          "required": ["type", "entity"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type":   { "const": "set_motion" },
+            "entity": { "type": "string" },
+            "vel":    { "$ref": "#/definitions/vec3" },
+            "accel":  { "$ref": "#/definitions/vec3" }
+          },
+          "required": ["type", "entity"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type":   { "const": "remove" },
+            "entity": { "type": "string" }
+          },
+          "required": ["type", "entity"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type":   { "const": "toggle_controlled" },
+            "entity": { "type": "string" }
+          },
+          "required": ["type", "entity"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type":   { "const": "set_controlled" },
+            "entity": { "type": "string" },
+            "value":  { "type": ["number", "boolean"], "default": true }
+          },
+          "required": ["type", "entity"],
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "event": {
+      "type": "object",
+      "properties": {
+        "trigger":   { "$ref": "#/definitions/trigger" },
+        "condition": { "$ref": "#/definitions/condition" },
+        "once":      { "type": "boolean", "default": true, "description": "Fire at most once (fired markers live in SimState, never in scene files)." },
+        "actions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/action" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -6,6 +6,17 @@ The game layer builds `Diff`s and hands them to the renderer — it never calls 
 
 ---
 
+## Roadmap specs
+
+Requirements documents for the next major systems live in `docs/specs/`:
+
+- [SCENE_COORDINATOR.md](specs/SCENE_COORDINATOR.md) — runtime scene switching, `change_scene` + spawn points, persistent GameState vs scene-local state.
+- [WORLD_BUILDING.md](specs/WORLD_BUILDING.md) — floor/wall tile layer, spatial tile cache, roads with forks, collision, landmark navigation.
+- [MAP_EDITOR.md](specs/MAP_EDITOR.md) — strict versioned scene schema, JSON round-trip serializer, archetypes and named clips, editor tooling.
+- [SHIM_SYSTEM.md](specs/SHIM_SYSTEM.md) — fixed-timestep deterministic sim, lookahead fork, translucent shim render pass, upgrade tiers, corruption effects.
+
+---
+
 ## Responsibilities
 
 | Layer | Owns |
@@ -17,21 +28,31 @@ The game layer builds `Diff`s and hands them to the renderer — it never calls 
 
 ## Core Gameplay Loop
 
+The sim advances in fixed **60 Hz ticks** (`SIM_DT = 1/60 s`, `src/game/sim.h`);
+the engine loop runs an accumulator over wall time (see ARCHITECTURE.md,
+Fixed-Timestep Simulation Loop). Per rendered frame:
+
 ```
-1. Read player input
-2. Advance simulation by dt (deterministic — no wall-clock dependency)
-3. Detect collisions / trigger events
-4. Run clairvoyance lookahead (N seconds ahead of current sim time)
-5. Build Diff:
-     - upsert entities whose trajectory/animation changed
-     - upsert shim ghosts from lookahead result
-     - remove entities that left the scene
-6. renderer.applyDiff(diff)
-7. renderer.render(simTime)
+1. Engine translates SDL events → InputFrame (once per frame; game layer is SDL-free)
+2. accumulator += wall dt (capped);  while accumulator >= SIM_DT:
+     a. Resolve the tick-stamped input command → ResolvedActions (pure function;
+        pressed/released edges are consumed by the first tick, never repeated)
+     b. stepSim(scene, simState, actions, diff):
+          - applyMovement to controlled entities
+          - evaluate events (triggers/conditions/actions)
+          - upsert entities whose trajectory/animation changed, remove despawns
+          - simState.clock.tick++
+     c. accumulator -= SIM_DT
+3. (future) Run clairvoyance lookahead: copy SimState, step the copy N/SIM_DT
+   ticks, upsert shim ghosts from the result
+4. renderer.applyDiff(diff)
+5. renderer.render(clock.time() + accumulator)   ← continuous time, smooth motion
 ```
 
-Steps 1–5 are pure CPU simulation. Steps 6–7 are engine calls. The game layer never
-touches a VBO or uniform directly.
+Steps 1–3 are pure CPU simulation over an immutable `Scene` plus a copyable
+`SimState` (all runtime state: entities, attrs, flags, fired markers, clock).
+Steps 4–5 are engine calls. The game layer never touches a VBO or uniform
+directly — and never sees an SDL type.
 
 ---
 
@@ -166,24 +187,67 @@ sending Mochi leaping away via `set_motion`.
 
 ```json
 {
-  "sheet": { "path": "art/penguin.png", "cols": 16, "rows": 1 },
+  "version": 1,
+  "sheets": [ { "path": "art/penguin.png", "cols": 16, "rows": 1 } ],
   "cameras": [
     { "projection": "perspective", "position": [6, 7, 16], "target": [6, 0, 5] }
   ],
   "activeCamera": 0,
+  "archetypes": {
+    "penguin": {
+      "scale": [0.9, 0.9], "billboard": true, "sheet": 0,
+      "clips": {
+        "idle": { "first": 7, "count": 1, "fps": 0 },
+        "walk": { "first": 0, "count": 5, "fps": 10 }
+      }
+    }
+  },
   "entities": [
-    { "id": "player", "pos": [0, 0.45, 5], "scale": [0.9, 0.9], "billboard": true,
-      "vel": [1.2, 0, 0], "anim": { "first": 0, "count": 5, "fps": 10 } },
-    { "id": "mochi",  "pos": [11, 0.45, 5], "scale": [0.9, 0.9], "billboard": true,
-      "anim": { "first": 7, "count": 1, "fps": 0 } }
+    { "id": "player", "archetype": "penguin", "pos": [0, 0.45, 5],
+      "vel": [1.2, 0, 0], "anim": "walk" },
+    { "id": "mochi",  "archetype": "penguin", "pos": [11, 0.45, 5], "anim": "idle" }
   ],
   "events": [ /* see below */ ]
 }
 ```
 
+`version` is the scene format version (currently 1). The loader warns on stderr when
+it is missing and rejects versions newer than it supports. The loader is **strict**
+(see the MAP_EDITOR spec): unknown trigger/action types, unknown condition ops,
+duplicate entity ids, entity/archetype/clip references that don't resolve, and
+malformed vectors (wrong length) are hard errors with contextual messages such as
+`events[3].actions[0]: unknown action type 'set_flg'` — typos fail the load instead
+of silently becoming defaults.
+
+`sheets` lists every sprite sheet the scene uses (loaded into the renderer's texture
+array in order — see ARCHITECTURE.md); the singular `"sheet"` object is still accepted
+as `sheets[0]`. An entity's optional `"sheet"` field is an index into that list
+(default 0).
+
 Entities are referenced by string `id` in the data file; the loader assigns numeric
 `EntityId`s (starting at 1) and keeps the name→id map. Optional fields: `vel`, `accel`
-(motion, evaluated on the GPU and mirrored on the CPU for triggers), `rotation` (non-billboard).
+(motion, evaluated on the GPU and mirrored on the CPU for triggers), `sheet`,
+`tint` (`[r, g, b, a]` multiplier — alpha < 1 renders in the translucent pass),
+`rotation` and `pitch` (non-billboard orientation, radians — see ARCHITECTURE.md;
+pitch −π/2 lies a quad flat as a floor tile).
+
+### Archetypes and named animation clips
+
+An **archetype** is a named entity template declared in the top-level `"archetypes"`
+object. Its fields (`scale`, `billboard`, `sheet`, `speed`, ... — any entity field)
+apply as *defaults* to every entity that references it via `"archetype"`; fields the
+entity sets itself override the archetype's, key by key. An archetype's `"clips"`
+map names animation ranges (`"walk"`, `"idle"`, `"windup"`) so authored data says
+*what plays*, never raw frame numbers:
+
+- an entity's `"anim"` may be a **string** — a clip name resolved through its
+  archetype — or the raw inline `{ "first", "count", "fps" }` object (back-compat);
+- the `set_anim` action may give `"clip": "surprised"` instead of `first/count/fps`
+  (the clip is resolved through the *target entity's* archetype at runtime).
+
+The loader keeps the parsed archetypes (name → clips) and the entity → archetype
+mapping on the `Scene`; `demo.json` is the reference example. Raw frame indices
+remain valid but are discouraged in authored content (MAP_EDITOR spec).
 
 ### Event / Condition / Action system
 
@@ -208,13 +272,35 @@ no wall-clock, no `rand()` — so they fire deterministically.
 |-------------|---------------------------------|------------|
 | `start`     | —                               | first step (subject to condition) |
 | `proximity` | `entity`, `target`, `radius`    | distance(entity, target) ≤ radius |
-| `input`     | `action`, `edge`                | the abstract `action` shows `edge` this frame (`pressed`/`released`/`held`; default `pressed`) — see Controls / Input |
+| `input`     | `action`, `edge`                | the abstract `action` shows `edge` this tick (`pressed`/`released`/`held`; default `pressed`) — see Controls / Input |
+
+### Flags and conditions
+
+Flags are **numeric** (`double`): booleans are just 0/1 — `"value": true` in data is
+1.0 — and the same store holds counters (`keys`, `score`). A flag that was never set
+reads as 0 (false). A condition is either a single flag comparison or an `all`/`any`
+composition (recursive to any depth):
+
+```json
+"condition": { "all": [
+  { "flag": "keys", "op": "ge", "value": 3 },
+  { "any": [ { "flag": "door_open", "value": true },
+             { "flag": "lives", "op": "ne", "value": 0 } ] }
+] }
+```
+
+| Condition form | Fields | Passes when |
+|----------------|--------|-------------|
+| flag comparison | `flag`, `value`, `op` (optional) | `flags[flag] <op> value`; `op` is one of `eq` (default), `ne`, `lt`, `le`, `gt`, `ge` |
+| `all` | array of conditions | every child passes (empty `all` passes) |
+| `any` | array of conditions | at least one child passes (empty `any` fails) |
 
 | Action       | Fields                                  | Effect |
 |--------------|-----------------------------------------|--------|
 | `dialogue`   | `id`                                    | emits a `CV_DIALOGUE: <id>` line (UI sink TBD) |
-| `set_flag`   | `flag`, `value`                         | sets a boolean flag |
-| `set_anim`   | `entity`, `first`, `count`, `fps`       | swaps an entity's animation (emits an upsert `Diff`) |
+| `set_flag`   | `flag`, `value`                         | sets a flag (boolean or number) |
+| `add_flag`   | `flag`, `value`                         | adds `value` to a flag (counters — a missing flag starts at 0) |
+| `set_anim`   | `entity`, `clip` *or* `first`, `count`, `fps` | swaps an entity's animation (emits an upsert `Diff`); `clip` names an archetype clip |
 | `set_motion` | `entity`, `vel`, `accel`                | rebases motion from the entity's current position and gives it a new velocity/acceleration (e.g. an enemy fleeing or a thrown arc) |
 | `remove`     | `entity`                                | despawns an entity (emits a removal `Diff`) |
 | `toggle_controlled` | `entity`                         | flips the entity's `controlled` attribute (adds/removes it from the controlled set) |
@@ -224,14 +310,58 @@ no wall-clock, no `rand()` — so they fire deterministically.
 produce `Diff`s the renderer applies — they never call GL. This is the same seam the
 clairvoyance lookahead uses, so shim ghosts and scripted events share one deterministic sim.
 
+### Bitmap font / text entities
+
+Text is not a special renderer feature — it's data. `src/game/text.{h,cpp}` provides
+`makeText(s, pos, charW, charH, fontSheet, tint)`, a pure function that turns a string into
+one non-billboard `Instance` per character, laid out along `+X`, each sampling a cell of a
+font sheet keyed by `frame = ascii - 32`. The renderer never learns what "text" is; it just
+draws the quads it's given, exactly like every other sprite.
+
+`scripts/gen_font.py` generates `art/font.png`: 16 cols × 6 rows of 16×16 cells, white glyphs
+on transparent, covering ASCII 32 ("space") through 127 — the same flat cell-index convention
+as every other sheet.
+
+A scene entity with a `"text"` field expands to N glyph entities instead of one:
+
+```json
+{ "id": "title", "text": "FIND 3 KEYS", "pos": [1, 2, 0],
+  "charSize": [0.5, 0.5], "sheet": 2, "tint": [1, 1, 1, 1] }
+```
+
+`charSize` is the per-glyph `[width, height]` (default `[0.5, 0.5]`); `sheet` indexes the
+scene's `"sheets"` list (a font sheet). The entity's `id` binds to its *first* glyph, so
+triggers/actions can reference it by name as usual; `Scene::textRangeEnd` records the
+`[first, last]` glyph id range so the `remove` action despawns every glyph as one unit
+(`events.cpp`). There is no `set_text` action yet — static text plus `remove` covers the
+current demos.
+
+### Dialogue text (`dialogueText` scene config)
+
+The `dialogue` action always emits its `CV_DIALOGUE: <id>` printf. A scene may additionally
+declare a top-level `dialogueText` block:
+
+```json
+"dialogueText": { "pos": [0, 2.5, 4], "charSize": [0.3, 0.3], "sheet": 2, "tint": [1,1,1,1] }
+```
+
+When present, every `dialogue` action ALSO spawns its line id as glyph text at that position,
+using ids from a reserved runtime range (`SimState::nextDynamicId`, starting at 1,000,000 —
+well above any scene-authored id) so it can never collide with a named entity. The spawned
+text despawns automatically after `DIALOGUE_TEXT_TICKS` (180 ticks = 3 seconds at the fixed
+60 Hz tick) via `SimState::dialogueTextExpiry`, a tick-driven schedule checked once per
+`stepSim` — deterministic, no wall clock, replay-safe like everything else in the sim.
+
 ---
 
 ## Controls / Input
 
 Keyboard input is a small, device-agnostic layer (`src/game/input.{h,cpp}`) that sits between
-SDL and the game logic. It has three pieces: an **InputFrame** (raw per-frame key state), the
-**Bindings** (key → abstract action), and the **movement** pass that drives controlled entities.
-The engine wires it up each frame in scene mode; the events demo path is unaffected (no bindings).
+the engine and the game logic. It has three pieces: an **InputFrame** (raw per-frame key state),
+the **Bindings** (key → abstract action), and the **movement** pass that drives controlled
+entities (`applyMovement`, declared in `scene.h`, run per tick by `stepSim`). The game layer is
+**SDL-free**: the ENGINE builds the InputFrame from SDL events (`src/engine/sdl_input.{h,cpp}`,
+`buildInputFrame`) once per rendered frame; the events demo path is unaffected (no bindings).
 
 **Character/player movement is free — not grid-locked.** The 90° lock is a *camera* constraint
 (see [CLAUDE.md](CLAUDE.md)), not a movement one.
@@ -259,14 +389,19 @@ A scene may declare a `controls` block mapping key names to abstract action name
 ```
 
 Multiple keys may map to the same action (WASD *and* arrows above). Unbound keys contribute
-nothing. The bindings live on the `Scene`; the engine resolves the `InputFrame` through them
-into down/pressed/released **action** sets each frame.
+nothing. The bindings are parsed onto the `Scene`; the active input source
+(`BindingsInputSource`) holds a **copy** of them — so it stays valid across scene
+unload/hot-reload — and resolves each tick's `InputFrame` into down/pressed/released
+**action** sets via `ResolvedActions poll(const InputFrame&)`. Edges (pressed/released) are
+consumed by the first sim tick of the frame and never repeat on later ticks; held state
+persists. Resolution is a pure function — the per-tick input is effectively a tick-stamped
+command, ready for lockstep replay/networking.
 
 ### Entity attributes: `controlled` and `speed`
 
 Movement is driven by per-entity, game-side attributes — kept separate from the GPU `Instance`
-(which must stay a standard-layout block of floats). They live in an `EntityAttrs` store owned
-by the `EventSystem`, initialised from the scene:
+(which must stay a standard-layout block of floats). They live in an `EntityAttrs` store inside
+the copyable `SimState` (`src/game/sim.h`), initialised from the immutable scene:
 
 | Field        | Default | Meaning |
 |--------------|---------|---------|
@@ -289,9 +424,9 @@ The directional actions `move_north` (−Z), `move_south` (+Z), `move_west` (−
 follow the engine coordinate convention (+X east, +Z south, +Y up). Held directions sum into a
 world-space vector, normalised if non-zero (so diagonals aren't faster), then scaled by each
 controlled entity's `speed` and applied as **velocity** — using the same rebase-to-current-
-position + `motionStart = now` approach as `set_motion`. An upsert is emitted only when an
-entity's desired velocity actually differs from its current velocity, so a stationary or
-steady-moving entity produces no per-frame `Diff` churn.
+position + `motionStart = now` approach as `set_motion`, at the tick's sim time. An upsert is
+emitted only when an entity's desired velocity actually differs from its current velocity, so a
+stationary or steady-moving entity produces no per-tick `Diff` churn.
 
 ### `input` trigger
 
@@ -303,8 +438,8 @@ The `input` trigger fires when an abstract action shows a given edge this frame:
 ```
 
 `edge` is one of `pressed` / `released` / `held` (default `pressed`). The resolved action sets
-are threaded into `EventSystem::update`; the no-input overload (used by the events demo) simply
-passes empty action sets.
+are threaded into `updateEvents` via `stepSim` each tick; a scene without bindings (like the
+events demo) simply runs with empty action sets.
 
 ### Demo
 
@@ -316,6 +451,50 @@ make demo-events     # src/levels/demo.json (the proximity/dialogue demo)
 In `demo-controls`, WASD or the arrow keys move the player penguin freely. Pressing **space**
 fires an `input` trigger that toggles a second "buddy" penguin into the controlled set, so both
 move together; pressing space again drops the buddy back out.
+
+---
+
+## Demos
+
+Every demo is a plain scene JSON under `src/levels/`, run via `make demo-<name>` (desktop) or
+the matching card on the [landing page](https://clare.dobuki.net) (web). Each one isolates a
+layer or feature so a regression is easy to localize:
+
+| Demo | Make target | Scene | Proves |
+|------|-------------|-------|--------|
+| **Quest** (flagship) | `make demo-quest` | `quest.json` | Everything below, combined into one small playable game: archetypes + named clips, flags/conditions gating a door, bitmap-font text, a patrolling enemy driven by `set_motion` + proximity, and a real shim preview (see below). |
+| World | `make demo-world` | `world.json` | Tiled floor (pitched quads) + brick walls (upright quads) from a second sprite sheet, plus a translucent ghost — the two-pass opaque/translucent render path. |
+| Controls | `make demo-controls` | `controls.json` | The `input` trigger and `toggle_controlled`/`set_controlled` — free WASD/arrow movement, toggling a second controlled entity. |
+| Menu | `make demo-menu` | `menu.json` | Flags + `input` triggers driving pure animation-state UI (no 3D movement). |
+| Events | `make demo-events` | `demo.json` | The original proximity → dialogue → `set_motion` chain (Mochi). |
+| Stress Test | `make demo` (no `SCENE=`) / `stress.html` | — (code-built) | Raw throughput: 900 instanced billboards, GPU-driven animation, no scene/event system involved. |
+
+### The quest demo
+
+`src/levels/quest.json`: a small room (6×6 main area + a 6×2 vault behind a gated door). The
+player (a controlled penguin archetype) must find 3 keys — each a proximity trigger that
+`remove`s the key, `add_flag`s a `keys` counter, and fires a `dialogue`. The gate's middle
+segment (`door`, tinted purple to read as distinct from the plain brick walls) only despawns
+once a `condition: { "flag": "keys", "op": "ge", "value": 3 }` passes on a proximity trigger,
+revealing a "WIN" bitmap-font text and a `win_marker` proximity zone that fires a `victory`
+dialogue and swaps the player to its `chat` clip. A second penguin patrols back and forth
+between two invisible marker entities (tint alpha 0, so they're discarded by the fragment
+shader and never drawn) via a pair of mirrored proximity → `set_motion` events; touching it
+fires an `ouch` dialogue and a small `set_motion` knockback (non-fatal — this engine has no
+collision/health system yet, so it's flavor, not damage).
+
+**The shim preview**, done with zero new engine code: `enemy_shim` is a second Instance with
+the *exact same* starting `pos`/`vel` as `enemy`, but `"motionStart": -1.0` — one second
+"pre-aged" on the same analytic motion formula (`pos + vel·dt + ½·accel·dt²`) every Instance
+already evaluates. At any moment it therefore renders exactly where the real enemy *will be*
+one second from now. The trick is keeping that phase offset exact across the enemy's direction
+flips: `enemy_shim` gets its own copies of the two patrol proximity events (against the same
+markers, same radius), so it independently reaches each marker and flips its own velocity —
+always exactly one second before the real enemy does, since both move at identical speed along
+identical geometry. The result is a genuine clairvoyance-style "ghost ahead" preview (tinted
+`[0.5, 0.8, 1, 0.35]`, translucent pass), built entirely from `motionStart` + proximity triggers
++ `set_motion` — the same primitives every other demo uses. See `docs/specs/SHIM_SYSTEM.md` for
+where this goes next (a real forward-simulation lookahead rather than a hand-authored mirror).
 
 ---
 

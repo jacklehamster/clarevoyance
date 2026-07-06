@@ -93,10 +93,16 @@
   <p class="subtitle">Fantasy RPG Engine — Work in Progress</p>
 
   <div class="demos">
-    <a class="demo-card" href="script.html">
-      <span class="icon">🐧</span>
-      <h2>Script Demo</h2>
-      <p>Data-driven scene: walkers, bouncers, and idlers animated from a JSON definition.</p>
+    <a class="demo-card" href="stress.html?CV_SCENE=scenes/quest.json">
+      <span class="icon">🗝️</span>
+      <h2>Quest Demo</h2>
+      <p>The flagship demo: find 3 keys, open the counter-gated door, dodge a patrolling enemy previewed by a real 1-second-ahead shim ghost, and reach the win room. Bitmap-font text, archetypes, flags, and set_motion, all in one scene.</p>
+    </a>
+
+    <a class="demo-card" href="stress.html?CV_SCENE=scenes/world.json">
+      <span class="icon">🏰</span>
+      <h2>World Demo</h2>
+      <p>A tiled room: pitched floor quads, brick walls from a second sprite sheet, and a translucent ghost penguin — the shim render path.</p>
     </a>
 
     <a class="demo-card" href="stress.html?CV_SCENE=scenes/controls.json">
@@ -111,6 +117,12 @@
       <p>Data-driven menu: Up/Down or W/S keys navigate between options. Animation state tracks selection.</p>
     </a>
 
+    <a class="demo-card" href="stress.html?CV_SCENE=scenes/demo.json">
+      <span class="icon">🐧</span>
+      <h2>Events Demo</h2>
+      <p>Data-driven scene: the player walks toward Mochi; a proximity event fires dialogue and sends Mochi leaping away.</p>
+    </a>
+
     <a class="demo-card" href="stress.html">
       <span class="icon">⚡</span>
       <h2>Stress Test</h2>
@@ -118,6 +130,6 @@
     </a>
   </div>
 
-  <footer>C to toggle camera &nbsp;·&nbsp; F to fullscreen &nbsp;·&nbsp; ESC to quit</footer>
+  <footer>C to toggle camera &nbsp;·&nbsp; ESC to quit</footer>
 </body>
 </html>

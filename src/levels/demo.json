@@ -1,4 +1,5 @@
 {
+  "version": 1,
   "sheet": { "path": "art/penguin.png", "cols": 16, "rows": 1 },
 
   "cameras": [
@@ -6,17 +7,28 @@
   ],
   "activeCamera": 0,
 
+  "archetypes": {
+    "penguin": {
+      "scale": [1.4, 1.4], "billboard": true, "sheet": 0,
+      "clips": {
+        "walk":      { "first": 0, "count": 5, "fps": 10 },
+        "surprised": { "first": 6, "count": 1, "fps": 0 },
+        "idle":      { "first": 7, "count": 1, "fps": 0 }
+      }
+    }
+  },
+
   "entities": [
     {
-      "id": "player",
-      "pos": [-0.5, 0.7, 3], "scale": [1.4, 1.4], "billboard": true,
+      "id": "player", "archetype": "penguin",
+      "pos": [-0.5, 0.7, 3],
       "vel": [1.0, 0, 0],
-      "anim": { "first": 0, "count": 5, "fps": 10 }
+      "anim": "walk"
     },
     {
-      "id": "mochi",
-      "pos": [6, 0.7, 3], "scale": [1.4, 1.4], "billboard": true,
-      "anim": { "first": 7, "count": 1, "fps": 0 }
+      "id": "mochi", "archetype": "penguin",
+      "pos": [6, 0.7, 3],
+      "anim": "idle"
     }
   ],
 
@@ -28,7 +40,7 @@
       "actions": [
         { "type": "dialogue", "id": "mochi_intro" },
         { "type": "set_flag", "flag": "mochi_seen", "value": true },
-        { "type": "set_anim", "entity": "mochi", "first": 6, "count": 1, "fps": 0 },
+        { "type": "set_anim", "entity": "mochi", "clip": "surprised" },
         { "type": "set_motion", "entity": "mochi", "vel": [3.5, 4.5, 0], "accel": [0, -9.8, 0] }
       ]
     }

@@ -1,0 +1,1605 @@
+{
+  "version": 1,
+  "sheets": [
+    {
+      "path": "art/penguin.png",
+      "cols": 16,
+      "rows": 1
+    },
+    {
+      "path": "art/tiles.png",
+      "cols": 3,
+      "rows": 1
+    },
+    {
+      "path": "art/font.png",
+      "cols": 16,
+      "rows": 6
+    }
+  ],
+  "cameras": [
+    {
+      "projection": "perspective",
+      "position": [
+        3.0,
+        9.0,
+        14.0
+      ],
+      "target": [
+        3.0,
+        0.0,
+        4.0
+      ]
+    }
+  ],
+  "activeCamera": 0,
+  "archetypes": {
+    "penguin": {
+      "scale": [
+        0.9,
+        0.9
+      ],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {
+          "first": 7,
+          "count": 1,
+          "fps": 0
+        },
+        "walk": {
+          "first": 0,
+          "count": 5,
+          "fps": 10
+        },
+        "chat": {
+          "first": 4,
+          "count": 2,
+          "fps": 6
+        }
+      }
+    }
+  },
+  "entities": [
+    {
+      "id": "floor_0_0",
+      "pos": [
+        0.5,
+        0.0,
+        0.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_1_0",
+      "pos": [
+        1.5,
+        0.0,
+        0.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_2_0",
+      "pos": [
+        2.5,
+        0.0,
+        0.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_3_0",
+      "pos": [
+        3.5,
+        0.0,
+        0.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_4_0",
+      "pos": [
+        4.5,
+        0.0,
+        0.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_5_0",
+      "pos": [
+        5.5,
+        0.0,
+        0.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_0_1",
+      "pos": [
+        0.5,
+        0.0,
+        1.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_1_1",
+      "pos": [
+        1.5,
+        0.0,
+        1.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_2_1",
+      "pos": [
+        2.5,
+        0.0,
+        1.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_3_1",
+      "pos": [
+        3.5,
+        0.0,
+        1.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_4_1",
+      "pos": [
+        4.5,
+        0.0,
+        1.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_5_1",
+      "pos": [
+        5.5,
+        0.0,
+        1.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_0_2",
+      "pos": [
+        0.5,
+        0.0,
+        2.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_1_2",
+      "pos": [
+        1.5,
+        0.0,
+        2.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_2_2",
+      "pos": [
+        2.5,
+        0.0,
+        2.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_3_2",
+      "pos": [
+        3.5,
+        0.0,
+        2.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_4_2",
+      "pos": [
+        4.5,
+        0.0,
+        2.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_5_2",
+      "pos": [
+        5.5,
+        0.0,
+        2.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_0_3",
+      "pos": [
+        0.5,
+        0.0,
+        3.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_1_3",
+      "pos": [
+        1.5,
+        0.0,
+        3.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_2_3",
+      "pos": [
+        2.5,
+        0.0,
+        3.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_3_3",
+      "pos": [
+        3.5,
+        0.0,
+        3.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_4_3",
+      "pos": [
+        4.5,
+        0.0,
+        3.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_5_3",
+      "pos": [
+        5.5,
+        0.0,
+        3.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_0_4",
+      "pos": [
+        0.5,
+        0.0,
+        4.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_1_4",
+      "pos": [
+        1.5,
+        0.0,
+        4.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_2_4",
+      "pos": [
+        2.5,
+        0.0,
+        4.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_3_4",
+      "pos": [
+        3.5,
+        0.0,
+        4.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_4_4",
+      "pos": [
+        4.5,
+        0.0,
+        4.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_5_4",
+      "pos": [
+        5.5,
+        0.0,
+        4.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_0_5",
+      "pos": [
+        0.5,
+        0.0,
+        5.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_1_5",
+      "pos": [
+        1.5,
+        0.0,
+        5.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_2_5",
+      "pos": [
+        2.5,
+        0.0,
+        5.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_3_5",
+      "pos": [
+        3.5,
+        0.0,
+        5.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_4_5",
+      "pos": [
+        4.5,
+        0.0,
+        5.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_5_5",
+      "pos": [
+        5.5,
+        0.0,
+        5.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_0_6",
+      "pos": [
+        0.5,
+        0.0,
+        6.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_1_6",
+      "pos": [
+        1.5,
+        0.0,
+        6.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_2_6",
+      "pos": [
+        2.5,
+        0.0,
+        6.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_3_6",
+      "pos": [
+        3.5,
+        0.0,
+        6.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_4_6",
+      "pos": [
+        4.5,
+        0.0,
+        6.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_5_6",
+      "pos": [
+        5.5,
+        0.0,
+        6.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_0_7",
+      "pos": [
+        0.5,
+        0.0,
+        7.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_1_7",
+      "pos": [
+        1.5,
+        0.0,
+        7.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_2_7",
+      "pos": [
+        2.5,
+        0.0,
+        7.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_3_7",
+      "pos": [
+        3.5,
+        0.0,
+        7.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_4_7",
+      "pos": [
+        4.5,
+        0.0,
+        7.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "floor_5_7",
+      "pos": [
+        5.5,
+        0.0,
+        7.5
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "billboard": false,
+      "pitch": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 0,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "wall_north",
+      "pos": [
+        3.0,
+        1.0,
+        0.0
+      ],
+      "scale": [
+        6,
+        2
+      ],
+      "billboard": false,
+      "rotation": 0.0,
+      "sheet": 1,
+      "anim": {
+        "first": 1,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "wall_south",
+      "pos": [
+        3.0,
+        1.0,
+        8.0
+      ],
+      "scale": [
+        6,
+        2
+      ],
+      "billboard": false,
+      "rotation": 3.1415927,
+      "sheet": 1,
+      "anim": {
+        "first": 1,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "wall_west",
+      "pos": [
+        0.0,
+        1.0,
+        4.0
+      ],
+      "scale": [
+        8,
+        2
+      ],
+      "billboard": false,
+      "rotation": 1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 1,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "wall_east",
+      "pos": [
+        6.0,
+        1.0,
+        4.0
+      ],
+      "scale": [
+        8,
+        2
+      ],
+      "billboard": false,
+      "rotation": -1.5707963,
+      "sheet": 1,
+      "anim": {
+        "first": 1,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "gate_left",
+      "pos": [
+        1.0,
+        1.0,
+        6.0
+      ],
+      "scale": [
+        2,
+        2
+      ],
+      "billboard": false,
+      "rotation": 0.0,
+      "sheet": 1,
+      "anim": {
+        "first": 1,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "gate_right",
+      "pos": [
+        5.0,
+        1.0,
+        6.0
+      ],
+      "scale": [
+        2,
+        2
+      ],
+      "billboard": false,
+      "rotation": 0.0,
+      "sheet": 1,
+      "anim": {
+        "first": 1,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "door",
+      "pos": [
+        3.0,
+        1.0,
+        6.0
+      ],
+      "scale": [
+        2,
+        2
+      ],
+      "billboard": false,
+      "rotation": 0.0,
+      "sheet": 1,
+      "tint": [
+        0.55,
+        0.35,
+        0.85,
+        1.0
+      ],
+      "anim": {
+        "first": 1,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "player",
+      "archetype": "penguin",
+      "pos": [
+        3.0,
+        0.9,
+        1.0
+      ],
+      "controlled": true,
+      "speed": 3.0,
+      "anim": "walk"
+    },
+    {
+      "id": "enemy",
+      "archetype": "penguin",
+      "pos": [
+        3.0,
+        0.9,
+        3.0
+      ],
+      "vel": [
+        1.2,
+        0,
+        0
+      ],
+      "anim": "walk"
+    },
+    {
+      "id": "enemy_shim",
+      "archetype": "penguin",
+      "pos": [
+        3.0,
+        0.9,
+        3.0
+      ],
+      "vel": [
+        1.2,
+        0,
+        0
+      ],
+      "motionStart": -1.0,
+      "anim": "walk",
+      "tint": [
+        0.5,
+        0.8,
+        1.0,
+        0.35
+      ]
+    },
+    {
+      "id": "patrol_left",
+      "pos": [
+        1.0,
+        0.9,
+        3.0
+      ],
+      "billboard": true,
+      "tint": [
+        1,
+        1,
+        1,
+        0.0
+      ]
+    },
+    {
+      "id": "patrol_right",
+      "pos": [
+        5.0,
+        0.9,
+        3.0
+      ],
+      "billboard": true,
+      "tint": [
+        1,
+        1,
+        1,
+        0.0
+      ]
+    },
+    {
+      "id": "key1",
+      "pos": [
+        1.0,
+        0.6,
+        2.0
+      ],
+      "scale": [
+        0.5,
+        0.5
+      ],
+      "billboard": true,
+      "sheet": 1,
+      "anim": {
+        "first": 2,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "key2",
+      "pos": [
+        5.0,
+        0.6,
+        2.0
+      ],
+      "scale": [
+        0.5,
+        0.5
+      ],
+      "billboard": true,
+      "sheet": 1,
+      "anim": {
+        "first": 2,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "key3",
+      "pos": [
+        3.0,
+        0.6,
+        4.5
+      ],
+      "scale": [
+        0.5,
+        0.5
+      ],
+      "billboard": true,
+      "sheet": 1,
+      "anim": {
+        "first": 2,
+        "count": 1,
+        "fps": 0
+      }
+    },
+    {
+      "id": "win_marker",
+      "pos": [
+        3.0,
+        0.9,
+        7.3
+      ],
+      "billboard": true,
+      "tint": [
+        1,
+        1,
+        1,
+        0.0
+      ]
+    },
+    {
+      "id": "title",
+      "text": "FIND 3 KEYS",
+      "pos": [
+        0.6,
+        3.4,
+        -0.4
+      ],
+      "charSize": [
+        0.5,
+        0.6
+      ],
+      "sheet": 2,
+      "tint": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "id": "win_text",
+      "text": "WIN",
+      "pos": [
+        2.5,
+        2.4,
+        7.0
+      ],
+      "charSize": [
+        0.6,
+        0.8
+      ],
+      "sheet": 2,
+      "tint": [
+        1,
+        0.9,
+        0.3,
+        1
+      ]
+    }
+  ],
+  "events": [
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "player",
+        "target": "key1",
+        "radius": 0.6
+      },
+      "once": true,
+      "actions": [
+        {
+          "type": "remove",
+          "entity": "key1"
+        },
+        {
+          "type": "add_flag",
+          "flag": "keys",
+          "value": 1
+        },
+        {
+          "type": "dialogue",
+          "id": "key_get"
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "player",
+        "target": "key2",
+        "radius": 0.6
+      },
+      "once": true,
+      "actions": [
+        {
+          "type": "remove",
+          "entity": "key2"
+        },
+        {
+          "type": "add_flag",
+          "flag": "keys",
+          "value": 1
+        },
+        {
+          "type": "dialogue",
+          "id": "key_get"
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "player",
+        "target": "key3",
+        "radius": 0.6
+      },
+      "once": true,
+      "actions": [
+        {
+          "type": "remove",
+          "entity": "key3"
+        },
+        {
+          "type": "add_flag",
+          "flag": "keys",
+          "value": 1
+        },
+        {
+          "type": "dialogue",
+          "id": "key_get"
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "player",
+        "target": "door",
+        "radius": 1.2
+      },
+      "condition": {
+        "flag": "keys",
+        "op": "ge",
+        "value": 3
+      },
+      "once": true,
+      "actions": [
+        {
+          "type": "remove",
+          "entity": "door"
+        },
+        {
+          "type": "set_flag",
+          "flag": "door_open",
+          "value": true
+        },
+        {
+          "type": "dialogue",
+          "id": "door_open"
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "player",
+        "target": "win_marker",
+        "radius": 1.0
+      },
+      "condition": {
+        "flag": "door_open",
+        "value": true
+      },
+      "once": true,
+      "actions": [
+        {
+          "type": "dialogue",
+          "id": "victory"
+        },
+        {
+          "type": "set_anim",
+          "entity": "player",
+          "clip": "chat"
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "enemy",
+        "target": "patrol_right",
+        "radius": 0.4
+      },
+      "once": false,
+      "actions": [
+        {
+          "type": "set_motion",
+          "entity": "enemy",
+          "vel": [
+            -1.2,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "enemy",
+        "target": "patrol_left",
+        "radius": 0.4
+      },
+      "once": false,
+      "actions": [
+        {
+          "type": "set_motion",
+          "entity": "enemy",
+          "vel": [
+            1.2,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "enemy_shim",
+        "target": "patrol_right",
+        "radius": 0.4
+      },
+      "once": false,
+      "actions": [
+        {
+          "type": "set_motion",
+          "entity": "enemy_shim",
+          "vel": [
+            -1.2,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "enemy_shim",
+        "target": "patrol_left",
+        "radius": 0.4
+      },
+      "once": false,
+      "actions": [
+        {
+          "type": "set_motion",
+          "entity": "enemy_shim",
+          "vel": [
+            1.2,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": {
+        "type": "proximity",
+        "entity": "player",
+        "target": "enemy",
+        "radius": 0.6
+      },
+      "once": false,
+      "actions": [
+        {
+          "type": "dialogue",
+          "id": "ouch"
+        },
+        {
+          "type": "set_motion",
+          "entity": "player",
+          "vel": [
+            0,
+            0,
+            -4
+          ]
+        }
+      ]
+    }
+  ],
+  "controls": {
+    "bindings": {
+      "w": "move_north",
+      "a": "move_west",
+      "s": "move_south",
+      "d": "move_east",
+      "up": "move_north",
+      "left": "move_west",
+      "down": "move_south",
+      "right": "move_east"
+    }
+  }
+}

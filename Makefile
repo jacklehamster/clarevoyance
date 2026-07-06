@@ -17,44 +17,29 @@ WASM_FLAGS := -std=c++17 -O2 -Isrc/engine -Isrc/game \
               -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=1 \
               --emrun \
               --preload-file art \
-              --preload-file scenes \
+              --preload-file src/levels@scenes \
               --pre-js web/pre.js
 
-WASM_SCRIPT_FLAGS := -std=c++17 -O2 -Isrc/engine \
-              -sUSE_SDL=2 -sUSE_WEBGL2=1 -sFULL_ES3=1 \
-              -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
-              -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=1 \
-              --emrun \
-              --preload-file art \
-              --preload-file scenes \
-              --pre-js web/pre.js
-
-# Exclude the script demo entry point from the main binary (both have main()).
-SRC      := $(filter-out src/engine/script_demo.cpp, \
-              $(wildcard src/engine/*.cpp) $(wildcard src/game/*.cpp))
-# Exclude the stress-test entry point from the script demo binary.
-DEMO_SRC := $(filter-out src/engine/main.cpp, $(wildcard src/engine/*.cpp))
+SRC      := $(wildcard src/engine/*.cpp) $(wildcard src/game/*.cpp)
+GAME_SRC := $(wildcard src/game/*.cpp)
+TEST_SRC := $(wildcard tests/*.cpp)
 
 BIN      := build/clarevoyance
-DEMO_BIN  := build/clarevoyance-script
 APP       := build/Clarevoyance.app
 EXE       := $(APP)/Contents/MacOS/clarevoyance
-DEMO_APP  := build/ClarevoyanceScript.app
-DEMO_EXE  := $(DEMO_APP)/Contents/MacOS/clarevoyance-script
 
 TEST_DIR  := build/test
+TEST_UNIT := build/test_unit
 IMGDIFF   := tools/imgdiff
 
 # Test parameters — deterministic fixed frame, enough frames to get past upload.
 TEST_FRAMES := 120
 TEST_TIME   := 2.0
 
-.PHONY: all build bundle run demo demo-controls demo-events demo-menu clean \
+.PHONY: all build bundle run demo demo-controls demo-events demo-menu demo-world demo-quest clean \
         build-wasm run-wasm \
-        build-wasm-script run-wasm-script \
-        build-script run-script \
         deploy \
-        test test-wasm test-parity test-script
+        test test-unit test-wasm test-parity
 
 # Scene to run with `make demo` — override on the command line:
 #   make demo SCENE=src/levels/other.json
@@ -85,33 +70,21 @@ demo-events: $(BIN)
 demo-menu: $(BIN)
 	CV_SCENE=src/levels/menu.json $(BIN)
 
+# World demo: a small room — tiled floor (pitched quads), brick walls (upright
+# quads, second sprite sheet), the controlled player, and a translucent ghost
+# penguin rendered by the translucent pass (a shim preview teaser).
+demo-world: $(BIN)
+	CV_SCENE=src/levels/world.json $(BIN)
+
+# Quest demo (flagship): find 3 keys, open the gated door, dodge a patrolling
+# enemy (with a real shim preview 1s ahead), reach the win room. Bitmap-font
+# text, archetypes, flags/conditions, and set_motion all in one scene.
+demo-quest: $(BIN)
+	CV_SCENE=src/levels/quest.json $(BIN)
+
 $(BIN): $(SRC) $(wildcard src/engine/*.h) $(wildcard src/game/*.h)
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) $(SDL2) $(GL_FLAGS) $(SRC) -o $@
-
-build-script: $(DEMO_BIN)
-
-$(DEMO_BIN): $(DEMO_SRC) $(wildcard src/engine/*.h)
-	@mkdir -p build
-	$(CXX) $(CXXFLAGS) $(SDL2) $(GL_FLAGS) $(DEMO_SRC) -o $@
-
-run-script: build-script
-	@mkdir -p $(DEMO_APP)/Contents/MacOS
-	@cp $(DEMO_BIN) $(DEMO_EXE)
-	@printf '<?xml version="1.0" encoding="UTF-8"?>\n\
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n\
-<plist version="1.0"><dict>\n\
-  <key>CFBundleIdentifier</key>    <string>com.clarevoyance.scriptdemo</string>\n\
-  <key>CFBundleName</key>          <string>ClarevoyanceScript</string>\n\
-  <key>CFBundleExecutable</key>    <string>clarevoyance-script</string>\n\
-  <key>CFBundlePackageType</key>   <string>APPL</string>\n\
-  <key>CFBundleVersion</key>       <string>1</string>\n\
-  <key>NSHighResolutionCapable</key><true/>\n\
-  <key>NSPrincipalClass</key>      <string>NSApplication</string>\n\
-</dict></plist>\n' > $(DEMO_APP)/Contents/Info.plist
-	@cp -r art $(DEMO_APP)/Contents/MacOS/
-	@cp -r scenes $(DEMO_APP)/Contents/MacOS/
-	open $(DEMO_APP)
 
 bundle: $(BIN)
 	@mkdir -p $(APP)/Contents/MacOS
@@ -140,26 +113,15 @@ build-wasm: $(SRC) $(wildcard src/engine/*.h) $(wildcard src/game/*.h) web/pre.j
 	@mkdir -p $(WASM_OUT)
 	bash -c '$(EMSDK_ENV) && emcc $(WASM_FLAGS) $(SRC) -o $(WASM_OUT)/stress.html'
 
-build-wasm-script: $(DEMO_SRC) $(wildcard src/engine/*.h) web/pre.js
-	@mkdir -p $(WASM_OUT)
-	bash -c '$(EMSDK_ENV) && emcc $(WASM_SCRIPT_FLAGS) $(DEMO_SRC) -o $(WASM_OUT)/script.html'
-
 run-wasm: build-wasm
 	bash -c '$(EMSDK_ENV) && emrun $(WASM_OUT)/stress.html'
 
-run-wasm-script: build-wasm-script
-	bash -c '$(EMSDK_ENV) && emrun $(WASM_OUT)/script.html'
-
-deploy: build-wasm build-wasm-script
+deploy: build-wasm
 	@mkdir -p docs-web
 	cp $(WASM_OUT)/stress.html  docs-web/stress.html
 	cp $(WASM_OUT)/stress.js    docs-web/stress.js
 	cp $(WASM_OUT)/stress.wasm  docs-web/stress.wasm
 	cp $(WASM_OUT)/stress.data  docs-web/stress.data
-	cp $(WASM_OUT)/script.html  docs-web/script.html
-	cp $(WASM_OUT)/script.js    docs-web/script.js
-	cp $(WASM_OUT)/script.wasm  docs-web/script.wasm
-	cp $(WASM_OUT)/script.data  docs-web/script.data
 	cp web/landing.html         docs-web/index.html
 	@echo "Built to docs-web/ — commit and push to deploy"
 
@@ -169,6 +131,15 @@ deploy: build-wasm build-wasm-script
 
 $(IMGDIFF): tools/imgdiff.c src/engine/third_party/stb_image.h
 	clang -O2 -Isrc/engine -o $@ $< -lm
+
+# Unit tests: pure CPU (json parser, event system, determinism replay, scene
+# loading). Compiles the game layer only — no GL, no SDL, no window needed.
+$(TEST_UNIT): $(TEST_SRC) $(GAME_SRC) $(wildcard tests/*.h) $(wildcard src/game/*.h) $(wildcard src/engine/*.h)
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(TEST_SRC) $(GAME_SRC) -o $@
+
+test-unit: $(TEST_UNIT)
+	./$(TEST_UNIT)
 
 test: build $(IMGDIFF)
 	@mkdir -p $(TEST_DIR)
@@ -186,7 +157,7 @@ test-wasm: build-wasm
 	@mkdir -p $(TEST_DIR)
 	@echo "--- Web test ($(TEST_FRAMES) frames, t=$(TEST_TIME)) ---"
 	bash -c '$(EMSDK_ENV) && emrun --kill-exit --timeout 30 \
-	    "$(WASM_OUT)/index.html?CV_TEST_FRAMES=$(TEST_FRAMES)&CV_FIXED_TIME=$(TEST_TIME)&CV_SCREENSHOT=1" \
+	    "$(WASM_OUT)/stress.html?CV_TEST_FRAMES=$(TEST_FRAMES)&CV_FIXED_TIME=$(TEST_TIME)&CV_SCREENSHOT=1" \
 	    2>&1 | tee $(TEST_DIR)/web.log'
 	@if grep -q "CV_GLERROR" $(TEST_DIR)/web.log; then \
 	    echo "FAIL: GL errors detected (web)"; exit 1; fi
@@ -194,18 +165,6 @@ test-wasm: build-wasm
 	    echo "FAIL: blank framebuffer (web)"; exit 1; fi
 	@bash scripts/extract_shot.sh $(TEST_DIR)/web.log $(TEST_DIR)/web.png
 	@echo "Web test PASSED"
-
-test-script: build-script $(IMGDIFF)
-	@mkdir -p $(TEST_DIR)
-	@echo "--- Script demo test ($(TEST_FRAMES) frames, t=$(TEST_TIME)) ---"
-	CV_TEST_FRAMES=$(TEST_FRAMES) CV_FIXED_TIME=$(TEST_TIME) CV_SCREENSHOT=1 \
-	    $(DEMO_BIN) 2>&1 | tee $(TEST_DIR)/script.log
-	@if grep -q "CV_GLERROR" $(TEST_DIR)/script.log; then \
-	    echo "FAIL: GL errors detected"; exit 1; fi
-	@if grep -q "CV_BLANK" $(TEST_DIR)/script.log; then \
-	    echo "FAIL: blank framebuffer"; exit 1; fi
-	@bash scripts/extract_shot.sh $(TEST_DIR)/script.log $(TEST_DIR)/script.png
-	@echo "Script demo test PASSED"
 
 test-parity: $(TEST_DIR)/desktop.png $(TEST_DIR)/web.png $(IMGDIFF)
 	@echo "--- Parity diff: desktop vs web ---"

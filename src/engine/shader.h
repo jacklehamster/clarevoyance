@@ -18,5 +18,6 @@ void setUniform(GLuint program, const char* name, float v);
 void setUniform(GLuint program, const char* name, int v);
 void setUniform(GLuint program, const char* name, Vec3 v);
 void setUniform(GLuint program, const char* name, const Mat4& v);
+void setUniformArray(GLuint program, const char* name, const Vec4* v, int count);
 
 } // namespace cv

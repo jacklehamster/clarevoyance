@@ -101,7 +101,7 @@ for Clare's father's death. His unchecked ambitions would fracture the kingdom.
 **Dungeons:**
 - More complex layouts than outdoors
 - Third-person maintained throughout
-- Large open rooms may trigger overhead camera (exact trigger TBD — automatic or manual)
+- Large open rooms trigger the overhead camera automatically based on room size, with a manual player override
 
 ### Rendering Philosophy
 - Sprite-heavy: characters, enemies, and NPCs are billboard sprites in a 3D world
@@ -156,7 +156,8 @@ for Clare's father's death. His unchecked ambitions would fracture the kingdom.
   STORY.md          — full narrative, character arcs, boss designs, themes
   ARCHITECTURE.md   — engine layer: renderer contract, Instance/WorldState/Diff/Camera API
   GAME_LAYER.md     — game layer: combat, AI, clairvoyance system, event format, world structure
-  CLAUDE.md         — this file
+  /specs            — requirements specs (scene coordinator, world building, map editor, shims)
+CLAUDE.md           — this file (repo root)
 ```
 
 ---
@@ -271,8 +272,9 @@ Agents working on this repo should drive tasks to completion without waiting to 
   Only stop to ask when the decision is architectural, destructive, or changes scope.
 - **Keep demos isolated** — one demo per layer/feature (`make demo-events`, `demo-controls`,
   `demo-menu`, stress test). When adding a layer, add its demo and a card in `web/landing.html`.
-- **Sync scenes in both places**: desktop scenes live in `src/levels/`, web-preloaded copies
-  in `scenes/`. Keep them identical when editing either.
+- **Scenes live ONLY in `src/levels/`** — the WASM build maps them into the virtual FS as
+  `scenes/` via `--preload-file src/levels@scenes`, so web URLs keep using `scenes/...` paths.
+  There is no separate `scenes/` directory to sync.
 - **Verify before claiming done**: run `make build` (and `make test` when relevant) before
   every push.
 
@@ -307,7 +309,28 @@ Agents working on this repo should drive tasks to completion without waiting to 
 
 ## Current Status
 
-Pre-production — no code written yet.
+The engine core and a data-driven script layer are implemented and live at
+https://clare.dobuki.net (landing page with demo cards).
 
-**First session goal:** Minimal C++ project with SDL2 and OpenGL that renders a
-billboarded sprite with frame animation handled entirely in the shader.
+**What exists:**
+- Renderer: single-draw-call instanced billboard sprites, motion + frame animation
+  evaluated entirely on the GPU from `uTime` (see `docs/ARCHITECTURE.md`)
+- Per-instance `tint` (RGBA multiplier) — the rendering hook for translucent shims
+- Data-driven scenes (`src/levels/*.json`): entities, cameras, events
+  (trigger/condition/action), archetypes with named clips, flags/conditions, key bindings,
+  free player movement
+- Bitmap-font text (`src/game/text.h`, `scripts/gen_font.py` → `art/font.png`): scene "text"
+  entities expand to one glyph Instance per character — no renderer changes needed
+- Quest demo (`src/levels/quest.json`, `make demo-quest`): the flagship demo — 3 keys, a
+  counter-gated door, a patrolling enemy previewed by a real 1-second-ahead shim ghost (see
+  `docs/GAME_LAYER.md`, "Demos"), and a win room
+- Scene hot-reload on desktop: edit the JSON while `make demo` runs and it reloads
+- Cross-platform: desktop (OpenGL 3.3 Core) and browser (WebGL 2) with pixel-identical
+  output verified by `make test-parity`
+
+**Make targets:** `build`, `run`, `demo` (SCENE=…), `demo-quest`, `demo-world`, `demo-events`,
+`demo-controls`, `demo-menu`, `build-wasm`, `run-wasm`, `deploy`, `test`, `test-unit`,
+`test-wasm`, `test-parity`, `clean`.
+
+**Next up:** see `docs/specs/` — scene coordinator, world building (textured grid quads),
+in-engine map editor, and the shim lookahead system (60 Hz fixed tick, lockstep-friendly).
