@@ -9,7 +9,9 @@
 
 #include <vector>
 
-#include <SDL2/SDL.h>
+// Plain <SDL.h>: sdl2-config already puts the SDL2 include dir on the path
+// (the <SDL2/SDL.h> form breaks on Homebrew macOS), matching every other file.
+#include <SDL.h>
 
 #include "input.h"
 
