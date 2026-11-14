@@ -267,7 +267,9 @@ Agents working on this repo should drive tasks to completion without waiting to 
 - **Finish the loop.** After pushing, verify CI (`Build and Deploy WASM` workflow) actually
   succeeds. If it fails, read the logs, fix, and push again — don't report a failure and stop.
 - **Deploys must land.** A change isn't done until it's visible at https://clare.dobuki.net
-  (the GitHub Action builds WASM → commits `docs-web/` → Cloudflare auto-deploys).
+  (the GitHub Action builds WASM → commits `docs-web/` → Cloudflare auto-deploys). The deploy
+  commit must NOT say `[skip ci]`: Cloudflare Pages obeys it and skips the deploy. Check with
+  `curl -sL https://clare.dobuki.net/ | grep <something new>`.
 - **Fix small blockers autonomously** (build errors, missing files, path issues, CI config).
   Only stop to ask when the decision is architectural, destructive, or changes scope.
 - **Keep demos isolated** — one demo per layer/feature (`make demo-events`, `demo-controls`,

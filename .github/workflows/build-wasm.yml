@@ -67,5 +67,8 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add docs-web/
-            git diff --staged --quiet || (git commit -m "Deploy: update WASM build [skip ci]" && git pull --rebase origin main && git push)
+            # No "[skip ci]" in this message: Cloudflare Pages honours that marker
+            # and would skip deploying the very commit that carries the new build.
+            # This workflow cannot re-trigger itself — docs-web/** is in paths-ignore.
+            git diff --staged --quiet || (git commit -m "Deploy: update WASM build" && git pull --rebase origin main && git push)
           fi
