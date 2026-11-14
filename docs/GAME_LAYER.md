@@ -407,8 +407,12 @@ the copyable `SimState` (`src/game/sim.h`), initialised from the immutable scene
 |--------------|---------|---------|
 | `controlled` | `false` | movement input applies to *every* entity whose `controlled` is true |
 | `speed`      | `3.0`   | movement rate in world units / second |
+| `radius`     | `0.3`   | collision circle around `pos` (see World → Collision) |
+| `solid`      | `false` | stands in the way of controlled entities |
+| `autoAnim`   | `false` | switch between the archetype's `walk` / `idle` clips when starting / stopping, and mirror the sprite to face its direction of travel |
+| `patrol`     | —       | walk back and forth forever (see World → Patrols) |
 
-Both are optional entity JSON fields:
+All are optional entity JSON fields:
 
 ```json
 { "id": "player", "pos": [0, 0.9, 0], "controlled": true, "speed": 3.0, ... }
@@ -421,8 +425,10 @@ one entity, several at once, or toggle membership at runtime (via `toggle_contro
 ### Movement model
 
 The directional actions `move_north` (−Z), `move_south` (+Z), `move_west` (−X), `move_east` (+X)
-follow the engine coordinate convention (+X east, +Z south, +Y up). Held directions sum into a
-world-space vector, normalised if non-zero (so diagonals aren't faster), then scaled by each
+follow the engine coordinate convention (+X east, +Z south, +Y up). In a scene with a camera
+rig (see World → Camera rig) the four directions are **relative to the camera** instead:
+"north" is away from the camera, whichever of the four ways it faces. Held directions sum into a
+vector, normalised if non-zero (so diagonals aren't faster), then scaled by each
 controlled entity's `speed` and applied as **velocity** — using the same rebase-to-current-
 position + `motionStart = now` approach as `set_motion`, at the tick's sim time. An upsert is
 emitted only when an entity's desired velocity actually differs from its current velocity, so a
@@ -462,12 +468,30 @@ layer or feature so a regression is easy to localize:
 
 | Demo | Make target | Scene | Proves |
 |------|-------------|-------|--------|
-| **Quest** (flagship) | `make demo-quest` | `quest.json` | Everything below, combined into one small playable game: archetypes + named clips, flags/conditions gating a door, bitmap-font text, a patrolling enemy driven by `set_motion` + proximity, and a real shim preview (see below). |
+| **Explore — top-down** | `make demo-explore` | `explore.json` | A world to walk around in, seen from above at 45°: terrain (authored map + procedural wilds), collision, the follow camera, labels, patrols with shims, sky. See "The explore demo". |
+| **Explore — dungeon crawl** | `make demo-dungeon` | `explore.json` (`CV_VIEW=dungeon`) | The same world from the third-person dungeon view. |
+| **Quest** | `make demo-quest` | `quest.json` | The event system as one small playable game: archetypes + named clips, flags/conditions gating a door, bitmap-font text, a patrolling enemy driven by `set_motion` + proximity, and a real shim preview (see below). |
 | World | `make demo-world` | `world.json` | Tiled floor (pitched quads) + brick walls (upright quads) from a second sprite sheet, plus a translucent ghost — the two-pass opaque/translucent render path. |
 | Controls | `make demo-controls` | `controls.json` | The `input` trigger and `toggle_controlled`/`set_controlled` — free WASD/arrow movement, toggling a second controlled entity. |
 | Menu | `make demo-menu` | `menu.json` | Flags + `input` triggers driving pure animation-state UI (no 3D movement). |
 | Events | `make demo-events` | `demo.json` | The original proximity → dialogue → `set_motion` chain (Mochi). |
 | Stress Test | `make demo` (no `SCENE=`) / `stress.html` | — (code-built) | Raw throughput: 900 instanced billboards, GPU-driven animation, no scene/event system involved. |
+
+### The explore demo
+
+`src/levels/explore.json`: a hand-drawn core — a walled ruin with rooms, corridors and a boss
+hall; two roads that cross; a hedged village green; a pond with a plank bridge — set in
+procedural wilds that go on forever in every direction (meadow, dunes with cacti, forest).
+There is nothing to *do* yet; it is a place to walk around in and a test bed for both views.
+
+Every character is the placeholder penguin, told apart by tint, size and the small label
+under its feet: `HERO`, `ENEMY` (patrolling, each with a translucent shim one second ahead of
+it), `BOSS`, `NPC`, `OBJECT` (things to pick up, later), `DECOR` (statues, barrels). Plants and
+rocks are real terrain art (`art/terrain.png`), grown by the terrain generator.
+
+Controls: WASD / arrows walk (relative to the camera), **Q / E** turn the camera 90°,
+**V** or space switches between the top-down and dungeon views. Both demo cards load the same
+scene; `CV_VIEW=topdown|dungeon` only picks the view it starts in.
 
 ### The quest demo
 
@@ -498,7 +522,146 @@ where this goes next (a real forward-simulation lookahead rather than a hand-aut
 
 ---
 
-## World Structure
+## World
+
+Everything a scene needs to be a place rather than a stage: ground to stand on, walls to stop
+at, a camera that follows, and a way to tell the penguins apart. All of it is optional —
+scenes without these blocks behave exactly as before.
+
+### Terrain — `"terrain"` (`src/game/terrain.h`)
+
+The world is a grid of 1×1 cells. What a cell contains is a **pure function of its
+coordinates**:
+
+- inside the **authored map** — ASCII `rows`, one character per cell, `origin` at the
+  top-left — the `legend` entry for that character decides;
+- everywhere else, and on authored cells that don't name a floor, the cell is **generated**
+  from `hash(seed, x, z)`.
+
+```json
+"terrain": {
+  "sheet": 1, "seed": 174, "radius": 26, "origin": [0, 0],
+  "legend": {
+    "=": {"floor": 7},
+    "#": {"wall": 9, "wallBase": 26, "top": 10, "height": 2},
+    "~": {"floor": 13, "floorFrames": 2, "floorFps": 1.5, "solid": true},
+    "_": {"props": false},
+    "E": {"floor": 8, "spawn": ["enemy_ew", "enemy_ew_shim"]}
+  },
+  "rows": [ "#####", "#E..#", "##=##" ],
+  "wild": { "scale": 12, "biomes": [ ... ] }
+}
+```
+
+Legend fields (all optional; a character with no entry — and the space — is plain wild ground):
+
+| Field | Meaning |
+|-------|---------|
+| `floor` | fixed floor frame. Absent → generated ground. |
+| `floorFrames`, `floorFps` | animated floor (water) — shader animation, as for sprites |
+| `wall`, `height` | a wall `height` cells tall: one quad per exposed face per storey |
+| `wallBase` | frame for the ground storey (mossy foot); defaults to `wall` |
+| `top` | frame for the wall's top; defaults to `wall` |
+| `solid` | blocks movement without being a wall (water) |
+| `props` | `false` keeps generated ground bare (a lawn, a patrol lane) |
+| `spawn` | archetype name, or a list: one entity each, standing at the cell centre, named `<archetype>@<x>,<z>` |
+
+Walls only emit the faces that can be seen (a face against an equally tall neighbour is
+skipped) and are shaded by the direction they face — a fixed fake sun — so corners read as 3D
+with no lighting in the shader.
+
+**The wilds.** `wild.biomes` is a list of bands over a smooth noise value (0–255, lattice
+spacing `scale` cells): each cell falls in the first band whose `upTo` exceeds its value.
+A biome names its ground tiles (`floor`: one frame or several, picked by hash, rotated by a
+random quarter turn so the tiling never shows) and what may grow there:
+
+```json
+{ "name": "dunes", "upTo": 88, "floor": [5, 5, 6], "props": [
+    {"cell": 21, "perMille": 40, "scale": [1.1, 1.1], "solid": true, "radius": 0.25},
+    {"cell": 25, "perMille": 45, "scale": [0.8, 0.8]} ] }
+```
+
+Each cell rolls once (0–999) against the props in order; a hit plants that prop, nudged off
+the cell centre by a hashed offset. So cell (10, 7) has a cactus because
+`hash(seed, 10, 7)` says so — walk away, come back, and it is the same cactus, with nothing
+saved anywhere. Change the seed and the whole world is different.
+
+Generation is **integer math only** (hashes, fixed-point smoothstep; plant offsets are exact
+multiples of 1/64), so every platform grows the identical world.
+
+**Streaming.** Terrain tiles are *not* entities and never enter the `SimState`.
+`TerrainStreamer` keeps the cells within `radius` of the followed entity instanced in the
+renderer: when the hero crosses into a new cell it emits upserts for the cells that came into
+range and removals for those left behind (a small hysteresis band avoids churn), and does
+nothing at all otherwise. It is render-side bookkeeping with no gameplay truth in it —
+collision does not ask what is loaded, it asks the function.
+
+### Collision
+
+Controlled entities are stopped by solid cells (walls, water), solid plants, and `solid`
+entities. Each tick, per controlled entity, the step is tried one axis at a time against a
+circle of the entity's `radius`, and the axis that would end inside something is cancelled —
+which is what makes the entity slide along a wall instead of sticking to it. Because every
+query goes through `Terrain::describe`, what blocks the hero depends only on where the hero
+is: deterministic, and identical for a lookahead fork of the sim.
+
+(The build uses `-ffp-contract=off` so arm64 and WASM compute the same floats — no fused
+multiply-add on one side only.)
+
+### Camera rig — `"cameraRig"`
+
+```json
+"cameraRig": {
+  "follow": "hero@25,29", "view": "topdown", "facing": "north",
+  "topdown": {"back": 5.6, "height": 6.1, "lookAhead": 0, "targetHeight": 0.5, "fovY": 0.8727},
+  "dungeon": {"back": 2.7, "height": 1.35, "lookAhead": 2.5, "targetHeight": 0.75, "fovY": 1.2217}
+}
+```
+
+`follow` defaults to the first controlled entity. The rig's math lives in the engine
+(`src/engine/camera_rig.h` — see ARCHITECTURE.md, "The follow-camera rig"); what the game
+layer owns is its **state**: `SimState::rig` holds the facing (in quarter turns) and the view,
+changed by three abstract actions a scene binds keys to:
+
+| Action | Effect |
+|--------|--------|
+| `camera_left` / `camera_right` | turn the camera 90° (eased; turns chain) |
+| `camera_view` | switch between the top-down and dungeon views (eased blend) |
+
+Movement is relative to the rig's facing, so after a turn "forward" is still away from the
+camera.
+
+### Labels — `"label"`
+
+```json
+"labelStyle": {"sheet": 2, "height": 0.22, "advance": 0.115, "drop": 0.02},
+"archetypes": { "enemy": { "label": "ENEMY", "labelTint": [1, 0.45, 0.4, 1], ... } }
+```
+
+An entity (or its archetype) with a `label` gets small billboarded glyphs centred under its
+feet. They are ordinary instances that share the owner's position and differ only in their
+pivot `offset`; whenever the owner's motion changes the sim copies the same motion formula
+onto them (`emitEntity`), so the GPU moves owner and label as one. Removing the entity removes
+its label. Labels are "grounded" billboards, which is what keeps text hung below the feet from
+being buried in the floor (see ARCHITECTURE.md).
+
+Give the entity a pivot (`"offset": [0, 0.32]` for a 0.9-tall penguin) so that `pos` is where
+its feet touch the ground — the label, the collision circle and the camera all work from that
+point.
+
+### Patrols — `"patrol"`
+
+```json
+"patrol": {"delta": [4, 0, 0], "speed": 1.3, "phase": 1.0}
+```
+
+Walk from `pos` to `pos + delta` and back, forever. A patrol is driven by the tick counter
+alone — a leg lasts a whole number of ticks, and `patrolPose(tick)` says where it is — so it
+needs no events and replays exactly. `phase` (seconds) runs the patrol that far ahead: give a
+translucent twin the same patrol with `"phase": 1.0` and it is, at every instant, where the
+original will be one second from now. That is the explore demo's enemy shims — a real
+lookahead, for the price of one field. (The general forward-simulation lookahead is still to
+come: `docs/specs/SHIM_SYSTEM.md`.)
 
 ### Outdoors
 

@@ -71,6 +71,10 @@ void setUniform(GLuint program, const char* name, Vec3 v) {
     glUniform3f(glGetUniformLocation(program, name), v.x, v.y, v.z);
 }
 
+void setUniform(GLuint program, const char* name, Vec4 v) {
+    glUniform4f(glGetUniformLocation(program, name), v.x, v.y, v.z, v.w);
+}
+
 void setUniform(GLuint program, const char* name, const Mat4& v) {
     glUniformMatrix4fv(glGetUniformLocation(program, name), 1, GL_FALSE, v.m);
 }

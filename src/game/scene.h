@@ -18,18 +18,48 @@
 #include <unordered_map>
 #include <vector>
 
+#include "camera_rig.h"
 #include "world_state.h"
 #include "input.h"
+#include "terrain.h"
 
 namespace cv {
 
 // Per-entity, game-side attributes that never touch the GPU Instance (which must
 // stay a standard-layout block of floats). Parsed from the entity JSON; the
 // EventSystem keeps a mutable working copy alongside the working instances.
+// A patrol walks back and forth between two points forever. It is driven by
+// the tick counter alone (leg length in whole ticks), so it replays exactly.
+struct Patrol {
+    bool enabled = false;
+    Vec3 a = {0, 0, 0};         // start point (the entity's authored position)
+    Vec3 b = {0, 0, 0};         // far point
+    uint32_t legTicks = 1;      // ticks to walk one way
+    uint32_t phaseTicks = 0;    // head start: this patrol runs that far ahead
+};
+
 struct EntityAttrs {
     bool  controlled = false;   // movement input applies to every controlled entity
     float speed      = 3.0f;    // world units / second when moving
+    float radius     = 0.3f;    // collision circle around the entity's position
+    bool  solid      = false;   // stands in the way of controlled entities
+    // Opt-in: switch between the archetype's "walk" and "idle" clips as the
+    // entity starts and stops, and mirror the sprite to face where it's going.
+    bool  autoAnim   = false;
+    Patrol patrol;
+    // Label glyphs hang from pos + (0, labelDy, 0): the bottom edge of the
+    // sprite, wherever its pivot is.
+    float labelDy    = 0.0f;
+    Vec3  faceDir    = {0, 0, 0};  // runtime: last horizontal direction of travel
 };
+
+// Attributes for an entity built in code (tests, tools) rather than loaded.
+inline EntityAttrs makeAttrs(bool controlled, float speed) {
+    EntityAttrs a;
+    a.controlled = controlled;
+    a.speed = speed;
+    return a;
+}
 
 // --- Event data (trigger / condition / action rules) -------------------------
 // Pure data parsed from the scene file; evaluated by the EventSystem.
@@ -126,6 +156,15 @@ struct DialogueTextConfig {
     Vec4  tint     = {1, 1, 1, 1};
 };
 
+// How entity labels ("label": "ENEMY") are drawn: small billboarded glyphs
+// centred under the sprite's feet. One style per scene.
+struct LabelStyle {
+    int   sheet   = 0;       // font sheet index
+    float height  = 0.16f;   // glyph quad size (square), world units
+    float advance = 0.09f;   // distance between glyph centres
+    float drop    = 0.05f;   // gap between the feet and the top of the label
+};
+
 struct Scene {
     std::vector<SheetInfo> sheets;           // at least one (defaulted if absent)
     WorldState initialState;                 // entities + cameras, ready to upload
@@ -146,6 +185,22 @@ struct Scene {
 
     // Optional scene-level "dialogueText" config (see DialogueTextConfig).
     DialogueTextConfig dialogueText;
+
+    // Entity labels: the glyph instances that follow each labelled entity.
+    // They copy their owner's motion whenever it changes (sim.cpp, emitEntity).
+    LabelStyle labelStyle;
+    std::unordered_map<EntityId, std::vector<EntityId>> labels;
+
+    // Entities with special per-tick handling, in ascending id order so the
+    // sim visits them in the same order on every platform.
+    std::vector<EntityId> patrolIds;
+    std::vector<EntityId> solidIds;
+
+    // Optional world: tile terrain (authored map + procedural wilds) and the
+    // follow-camera rig. `rigFollow` is the entity the rig keeps on screen.
+    Terrain   terrain;
+    RigConfig rig;
+    EntityId  rigFollow = 0;
 
     // Resolve a data-file entity name to its numeric id. Returns 0 if unknown
     // (0 is never assigned to a real entity — ids start at 1).
@@ -169,20 +224,5 @@ struct Scene {
 
 // Parse a scene JSON file. On failure returns false and fills `error`.
 bool loadScene(const char* path, Scene& out, std::string& error);
-
-// Apply directional movement to every controlled entity.
-//
-// Held directional actions (move_north/-south/-west/-east) sum into a world-space
-// direction (+X east, +Z south, +Y up): north = -Z, south = +Z, west = -X,
-// east = +X. The direction is normalised, scaled by each entity's speed, and
-// applied as velocity using the same rebase-to-current-position + motionStart=now
-// approach as the set_motion action. An upsert is emitted only when an entity's
-// desired velocity actually differs from its current velocity (no per-frame churn).
-void applyMovement(const ResolvedActions& actions,
-                   const std::unordered_map<EntityId, EntityAttrs>& attrs,
-                   std::unordered_map<EntityId, Instance>& entities,
-                   float now,
-                   const std::unordered_map<EntityId, Vec3>& positions,
-                   Diff& out);
 
 } // namespace cv

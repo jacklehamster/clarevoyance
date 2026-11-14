@@ -11,7 +11,7 @@
 //                 bindings yields the set of actions down/pressed/released.
 //
 // The movement pass (applying velocity to controlled entities) lives with the
-// simulation, not here — see scene.h / applyMovement.
+// simulation, not here — see sim.cpp (stepMovement).
 #pragma once
 
 #include <string>

@@ -17,11 +17,15 @@
     "sheets": {
       "description": "Every sprite sheet the scene uses, loaded into the renderer's texture array in order. An entity's \"sheet\" field indexes this list.",
       "type": "array",
-      "items": { "$ref": "#/definitions/sheet" }
+      "items": {
+        "$ref": "#/definitions/sheet"
+      }
     },
     "cameras": {
       "type": "array",
-      "items": { "$ref": "#/definitions/camera" }
+      "items": {
+        "$ref": "#/definitions/camera"
+      }
     },
     "activeCamera": {
       "description": "Index into \"cameras\" of the camera active at load (default 0).",
@@ -31,15 +35,21 @@
     "archetypes": {
       "description": "Named entity templates. An archetype's fields apply as defaults to every entity that references it (entity fields override key-by-key); its \"clips\" map names animation ranges.",
       "type": "object",
-      "additionalProperties": { "$ref": "#/definitions/archetype" }
+      "additionalProperties": {
+        "$ref": "#/definitions/archetype"
+      }
     },
     "entities": {
       "type": "array",
-      "items": { "$ref": "#/definitions/entity" }
+      "items": {
+        "$ref": "#/definitions/entity"
+      }
     },
     "events": {
       "type": "array",
-      "items": { "$ref": "#/definitions/event" }
+      "items": {
+        "$ref": "#/definitions/event"
+      }
     },
     "controls": {
       "type": "object",
@@ -47,7 +57,9 @@
         "bindings": {
           "description": "Device-agnostic key name (\"w\", \"up\", \"space\") to abstract action name (\"move_north\", \"toggle_extra\").",
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false
@@ -56,290 +68,939 @@
       "description": "Optional: when present, every 'dialogue' action ALSO spawns the line's id as on-screen text at this position for ~3 seconds (180 ticks), in addition to the CV_DIALOGUE printf it always emits.",
       "type": "object",
       "properties": {
-        "pos":      { "$ref": "#/definitions/vec3" },
-        "charSize": { "$ref": "#/definitions/vec2", "description": "Per-glyph [width, height] in world units (default [0.5, 0.5])." },
-        "sheet":    { "type": "integer", "minimum": 0, "description": "Index into the scene's \"sheets\" list (the font sheet)." },
-        "tint":     { "$ref": "#/definitions/vec4" }
+        "pos": {
+          "$ref": "#/definitions/vec3"
+        },
+        "charSize": {
+          "$ref": "#/definitions/vec2",
+          "description": "Per-glyph [width, height] in world units (default [0.5, 0.5])."
+        },
+        "sheet": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index into the scene's \"sheets\" list (the font sheet)."
+        },
+        "tint": {
+          "$ref": "#/definitions/vec4"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sky": {
+      "type": "object",
+      "description": "Optional sky backdrop: a vertical gradient by view-ray elevation.",
+      "properties": {
+        "zenith": {
+          "$ref": "#/definitions/vec3"
+        },
+        "horizon": {
+          "$ref": "#/definitions/vec3"
+        },
+        "ground": {
+          "$ref": "#/definitions/vec3"
+        }
+      },
+      "additionalProperties": false
+    },
+    "labelStyle": {
+      "type": "object",
+      "description": "How entity labels are drawn.",
+      "properties": {
+        "sheet": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Font sheet index."
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Glyph size, world units."
+        },
+        "advance": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Distance between glyph centres."
+        },
+        "drop": {
+          "type": "number",
+          "description": "Gap between the feet and the top of the label."
+        }
+      },
+      "additionalProperties": false
+    },
+    "cameraRig": {
+      "type": "object",
+      "description": "Follow camera with a top-down and a dungeon view; yaw locked to quarter turns. Makes movement camera-relative and enables the camera_left / camera_right / camera_view actions.",
+      "properties": {
+        "follow": {
+          "type": "string",
+          "description": "Entity id to keep on screen (default: the first controlled entity)."
+        },
+        "view": {
+          "enum": [
+            "topdown",
+            "dungeon"
+          ],
+          "description": "Starting view (CV_VIEW overrides)."
+        },
+        "facing": {
+          "enum": [
+            "north",
+            "east",
+            "south",
+            "west"
+          ]
+        },
+        "topdown": {
+          "$ref": "#/definitions/rigView"
+        },
+        "dungeon": {
+          "$ref": "#/definitions/rigView"
+        }
+      },
+      "additionalProperties": false
+    },
+    "terrain": {
+      "type": "object",
+      "description": "The ground: an authored ASCII tile map plus optional procedural wilds. Cells are 1x1; cell (x, z) spans [x, x+1) x [z, z+1).",
+      "properties": {
+        "sheet": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index of the terrain sheet in 'sheets'."
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Seed of the procedural generation."
+        },
+        "radius": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "description": "Cells kept instanced around the followed entity."
+        },
+        "origin": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "World cell [x, z] of rows[0][0]."
+        },
+        "legend": {
+          "type": "object",
+          "description": "Single character -> tile kind. The space character is always plain wild ground.",
+          "additionalProperties": {
+            "$ref": "#/definitions/tileKind"
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The map, north at the top; every row the same length."
+        },
+        "wild": {
+          "type": "object",
+          "description": "Procedural generation for every cell with no fixed floor.",
+          "properties": {
+            "scale": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 64,
+              "description": "Biome noise lattice spacing, in cells."
+            },
+            "biomes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/definitions/biome"
+              }
+            }
+          },
+          "required": [
+            "biomes"
+          ],
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     }
   },
-  "required": ["version"],
-
+  "required": [
+    "version"
+  ],
   "definitions": {
     "vec2": {
       "type": "array",
-      "items": { "type": "number" },
+      "items": {
+        "type": "number"
+      },
       "minItems": 2,
       "maxItems": 2
     },
     "vec3": {
       "type": "array",
-      "items": { "type": "number" },
+      "items": {
+        "type": "number"
+      },
       "minItems": 3,
       "maxItems": 3
     },
     "vec4": {
       "type": "array",
-      "items": { "type": "number" },
+      "items": {
+        "type": "number"
+      },
       "minItems": 4,
       "maxItems": 4
     },
-
     "sheet": {
       "type": "object",
       "properties": {
-        "path": { "type": "string", "description": "Image path relative to the content root (identical on desktop and WASM)." },
-        "cols": { "type": "integer", "minimum": 1 },
-        "rows": { "type": "integer", "minimum": 1 }
+        "path": {
+          "type": "string",
+          "description": "Image path relative to the content root (identical on desktop and WASM)."
+        },
+        "cols": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "additionalProperties": false
     },
-
     "camera": {
       "type": "object",
       "properties": {
-        "projection": { "enum": ["perspective", "orthographic"] },
-        "position": { "$ref": "#/definitions/vec3" },
-        "target":   { "$ref": "#/definitions/vec3" },
-        "up":       { "$ref": "#/definitions/vec3" },
-        "fovY":            { "type": "number", "description": "Vertical field of view, radians (perspective)." },
-        "orthoHalfHeight": { "type": "number", "description": "Half the view height in world units (orthographic)." }
+        "projection": {
+          "enum": [
+            "perspective",
+            "orthographic"
+          ]
+        },
+        "position": {
+          "$ref": "#/definitions/vec3"
+        },
+        "target": {
+          "$ref": "#/definitions/vec3"
+        },
+        "up": {
+          "$ref": "#/definitions/vec3"
+        },
+        "fovY": {
+          "type": "number",
+          "description": "Vertical field of view, radians (perspective)."
+        },
+        "orthoHalfHeight": {
+          "type": "number",
+          "description": "Half the view height in world units (orthographic)."
+        }
       },
       "additionalProperties": false
     },
-
     "clip": {
       "description": "A named animation range on a sprite sheet.",
       "type": "object",
       "properties": {
-        "first": { "type": "integer", "minimum": 0, "description": "First frame index." },
-        "count": { "type": "integer", "minimum": 1, "description": "Frame count." },
-        "fps":   { "type": "number", "minimum": 0, "description": "Frames per second (0 = static frame)." }
+        "first": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "First frame index."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Frame count."
+        },
+        "fps": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Frames per second (0 = static frame)."
+        }
       },
       "additionalProperties": false
     },
-
     "animInline": {
       "description": "Raw animation range (valid, but authored content should prefer named clips).",
       "type": "object",
       "properties": {
-        "first": { "type": "integer", "minimum": 0 },
-        "count": { "type": "integer", "minimum": 1 },
-        "fps":   { "type": "number", "minimum": 0 },
-        "start": { "type": "number", "description": "Animation time origin (sim seconds)." }
+        "first": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fps": {
+          "type": "number",
+          "minimum": 0
+        },
+        "start": {
+          "type": "number",
+          "description": "Animation time origin (sim seconds)."
+        }
       },
       "additionalProperties": false
     },
-
     "entityFields": {
       "description": "Fields shared by entities and archetype defaults.",
       "type": "object",
       "properties": {
-        "pos":       { "$ref": "#/definitions/vec3" },
-        "scale":     { "$ref": "#/definitions/vec2" },
-        "billboard": { "type": "boolean", "description": "true = always face the camera; false = oriented quad (rotation/pitch)." },
-        "rotation":  { "type": "number", "description": "Yaw about world-up, radians (non-billboard only)." },
-        "pitch":     { "type": "number", "description": "Tilt about the local right axis, radians; -pi/2 lies the quad flat as a floor tile (non-billboard only)." },
-        "vel":       { "$ref": "#/definitions/vec3" },
-        "accel":     { "$ref": "#/definitions/vec3" },
-        "motionStart": { "type": "number", "description": "Time origin for the motion formula (default 0). Advanced: give an entity the same pos/vel as another and a negative motionStart to render it N seconds ahead of that entity's trajectory — a clairvoyance shim preview built from the existing motion model, no new system required." },
-        "sheet":     { "type": "integer", "minimum": 0, "description": "Index into the scene's \"sheets\" list." },
-        "tint":      { "$ref": "#/definitions/vec4", "description": "RGBA multiplier; alpha < 1 renders in the translucent pass (shims)." },
+        "pos": {
+          "$ref": "#/definitions/vec3"
+        },
+        "scale": {
+          "$ref": "#/definitions/vec2"
+        },
+        "billboard": {
+          "type": "boolean",
+          "description": "true = always face the camera; false = oriented quad (rotation/pitch)."
+        },
+        "rotation": {
+          "type": "number",
+          "description": "Yaw about world-up, radians (non-billboard only)."
+        },
+        "pitch": {
+          "type": "number",
+          "description": "Tilt about the local right axis, radians; -pi/2 lies the quad flat as a floor tile (non-billboard only)."
+        },
+        "vel": {
+          "$ref": "#/definitions/vec3"
+        },
+        "accel": {
+          "$ref": "#/definitions/vec3"
+        },
+        "motionStart": {
+          "type": "number",
+          "description": "Time origin for the motion formula (default 0). Advanced: give an entity the same pos/vel as another and a negative motionStart to render it N seconds ahead of that entity's trajectory — a clairvoyance shim preview built from the existing motion model, no new system required."
+        },
+        "sheet": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index into the scene's \"sheets\" list."
+        },
+        "tint": {
+          "$ref": "#/definitions/vec4",
+          "description": "RGBA multiplier; alpha < 1 renders in the translucent pass (shims)."
+        },
         "anim": {
           "oneOf": [
-            { "type": "string", "description": "Clip name, resolved through the entity's archetype." },
-            { "$ref": "#/definitions/animInline" }
+            {
+              "type": "string",
+              "description": "Clip name, resolved through the entity's archetype."
+            },
+            {
+              "$ref": "#/definitions/animInline"
+            }
           ]
         },
-        "controlled": { "type": "boolean", "description": "Movement input applies to every controlled entity." },
-        "speed":      { "type": "number", "minimum": 0, "description": "Movement rate, world units / second." },
-        "text":       { "type": "string", "description": "Text entities only: the string to render. Expands to one glyph Instance per character (src/game/text.h); the entity's \"id\" binds to the first glyph, and 'remove' despawns the whole string as one unit." },
-        "charSize":   { "$ref": "#/definitions/vec2", "description": "Text entities only: per-glyph [width, height] in world units (default [0.5, 0.5])." }
-      }
-    },
-
-    "archetype": {
-      "allOf": [ { "$ref": "#/definitions/entityFields" } ],
-      "properties": {
-        "clips": {
+        "controlled": {
+          "type": "boolean",
+          "description": "Movement input applies to every controlled entity."
+        },
+        "speed": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Movement rate, world units / second."
+        },
+        "text": {
+          "type": "string",
+          "description": "Text entities only: the string to render. Expands to one glyph Instance per character (src/game/text.h); the entity's \"id\" binds to the first glyph, and 'remove' despawns the whole string as one unit."
+        },
+        "charSize": {
+          "$ref": "#/definitions/vec2",
+          "description": "Text entities only: per-glyph [width, height] in world units (default [0.5, 0.5])."
+        },
+        "offset": {
+          "$ref": "#/definitions/vec2",
+          "description": "Pivot offset in world units along the quad's own right/up axes. [0, h/2] stands a billboard on its feet: pos is then where it touches the ground."
+        },
+        "xray": {
+          "type": "boolean",
+          "description": "Also draw the entity as a faint silhouette wherever it is hidden behind other geometry (the hero behind a wall)."
+        },
+        "radius": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.5,
+          "description": "Collision circle around pos (default 0.3)."
+        },
+        "solid": {
+          "type": "boolean",
+          "description": "Stands in the way of controlled entities (default false)."
+        },
+        "autoAnim": {
+          "type": "boolean",
+          "description": "Switch between the archetype's 'walk' and 'idle' clips when starting/stopping, and mirror the sprite to face its direction of travel. Requires an archetype with both clips."
+        },
+        "patrol": {
           "type": "object",
-          "additionalProperties": { "$ref": "#/definitions/clip" }
+          "description": "Walk from pos to pos + delta and back, forever, driven by the tick counter.",
+          "properties": {
+            "delta": {
+              "$ref": "#/definitions/vec3",
+              "description": "Offset of the far point from pos. Must not be zero."
+            },
+            "speed": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "World units per second (default 1)."
+            },
+            "phase": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Seconds of head start. A translucent twin with phase 1 shows where the original will be in one second."
+            }
+          },
+          "required": [
+            "delta"
+          ],
+          "additionalProperties": false
+        },
+        "label": {
+          "type": "string",
+          "description": "Small billboarded text centred under the entity's feet (drawn per the scene's labelStyle)."
+        },
+        "labelTint": {
+          "$ref": "#/definitions/vec4",
+          "description": "RGBA multiplier for the label glyphs (default white)."
         }
       }
     },
-
-    "entity": {
-      "allOf": [ { "$ref": "#/definitions/entityFields" } ],
+    "archetype": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/entityFields"
+        }
+      ],
       "properties": {
-        "id":        { "type": "string", "minLength": 1, "description": "Unique entity name; events reference entities by this name." },
-        "archetype": { "type": "string", "description": "Name of a template in the top-level \"archetypes\" object." }
-      },
-      "required": ["id"]
+        "clips": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/clip"
+          }
+        }
+      }
     },
-
+    "entity": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/entityFields"
+        }
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique entity name; events reference entities by this name."
+        },
+        "archetype": {
+          "type": "string",
+          "description": "Name of a template in the top-level \"archetypes\" object."
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
     "trigger": {
       "oneOf": [
         {
           "type": "object",
-          "properties": { "type": { "const": "start" } },
-          "required": ["type"],
+          "properties": {
+            "type": {
+              "const": "start"
+            }
+          },
+          "required": [
+            "type"
+          ],
           "additionalProperties": false
         },
         {
           "type": "object",
           "properties": {
-            "type":   { "const": "proximity" },
-            "entity": { "type": "string", "description": "The moving entity (by id)." },
-            "target": { "type": "string", "description": "The entity it approaches (by id)." },
-            "radius": { "type": "number", "exclusiveMinimum": 0 }
+            "type": {
+              "const": "proximity"
+            },
+            "entity": {
+              "type": "string",
+              "description": "The moving entity (by id)."
+            },
+            "target": {
+              "type": "string",
+              "description": "The entity it approaches (by id)."
+            },
+            "radius": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
           },
-          "required": ["type", "entity", "target"],
+          "required": [
+            "type",
+            "entity",
+            "target"
+          ],
           "additionalProperties": false
         },
         {
           "type": "object",
           "properties": {
-            "type":   { "const": "input" },
-            "action": { "type": "string", "description": "Abstract action name (see controls.bindings)." },
-            "edge":   { "enum": ["pressed", "released", "held"], "default": "pressed" }
+            "type": {
+              "const": "input"
+            },
+            "action": {
+              "type": "string",
+              "description": "Abstract action name (see controls.bindings)."
+            },
+            "edge": {
+              "enum": [
+                "pressed",
+                "released",
+                "held"
+              ],
+              "default": "pressed"
+            }
           },
-          "required": ["type", "action"],
+          "required": [
+            "type",
+            "action"
+          ],
           "additionalProperties": false
         }
       ]
     },
-
     "condition": {
       "description": "A flag comparison, or a recursive all/any composition. Flags are numeric: JSON booleans are 0/1; a flag never set reads 0.",
       "oneOf": [
         {
           "type": "object",
           "properties": {
-            "flag":  { "type": "string" },
-            "value": { "type": ["number", "boolean"], "default": true },
-            "op":    { "enum": ["eq", "ne", "lt", "le", "gt", "ge"], "default": "eq" }
+            "flag": {
+              "type": "string"
+            },
+            "value": {
+              "type": [
+                "number",
+                "boolean"
+              ],
+              "default": true
+            },
+            "op": {
+              "enum": [
+                "eq",
+                "ne",
+                "lt",
+                "le",
+                "gt",
+                "ge"
+              ],
+              "default": "eq"
+            }
           },
-          "required": ["flag"],
+          "required": [
+            "flag"
+          ],
           "additionalProperties": false
         },
         {
           "type": "object",
           "properties": {
-            "all": { "type": "array", "items": { "$ref": "#/definitions/condition" } }
+            "all": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/condition"
+              }
+            }
           },
-          "required": ["all"],
+          "required": [
+            "all"
+          ],
           "additionalProperties": false
         },
         {
           "type": "object",
           "properties": {
-            "any": { "type": "array", "items": { "$ref": "#/definitions/condition" } }
+            "any": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/condition"
+              }
+            }
           },
-          "required": ["any"],
+          "required": [
+            "any"
+          ],
           "additionalProperties": false
         }
       ]
     },
-
     "action": {
       "oneOf": [
         {
           "type": "object",
           "properties": {
-            "type": { "const": "dialogue" },
-            "id":   { "type": "string" }
+            "type": {
+              "const": "dialogue"
+            },
+            "id": {
+              "type": "string"
+            }
           },
-          "required": ["type", "id"],
+          "required": [
+            "type",
+            "id"
+          ],
           "additionalProperties": false
         },
         {
           "type": "object",
           "properties": {
-            "type":  { "const": "set_flag" },
-            "flag":  { "type": "string" },
-            "value": { "type": ["number", "boolean"], "default": true }
+            "type": {
+              "const": "set_flag"
+            },
+            "flag": {
+              "type": "string"
+            },
+            "value": {
+              "type": [
+                "number",
+                "boolean"
+              ],
+              "default": true
+            }
           },
-          "required": ["type", "flag"],
+          "required": [
+            "type",
+            "flag"
+          ],
           "additionalProperties": false
         },
         {
           "type": "object",
           "properties": {
-            "type":  { "const": "add_flag" },
-            "flag":  { "type": "string" },
-            "value": { "type": "number", "default": 1 }
+            "type": {
+              "const": "add_flag"
+            },
+            "flag": {
+              "type": "string"
+            },
+            "value": {
+              "type": "number",
+              "default": 1
+            }
           },
-          "required": ["type", "flag"],
+          "required": [
+            "type",
+            "flag"
+          ],
           "additionalProperties": false
         },
         {
           "type": "object",
           "description": "Either a named clip (resolved through the target entity's archetype) or raw first/count/fps.",
           "properties": {
-            "type":   { "const": "set_anim" },
-            "entity": { "type": "string" },
-            "clip":   { "type": "string" },
-            "first":  { "type": "integer", "minimum": 0 },
-            "count":  { "type": "integer", "minimum": 1 },
-            "fps":    { "type": "number", "minimum": 0 }
+            "type": {
+              "const": "set_anim"
+            },
+            "entity": {
+              "type": "string"
+            },
+            "clip": {
+              "type": "string"
+            },
+            "first": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "fps": {
+              "type": "number",
+              "minimum": 0
+            }
           },
-          "required": ["type", "entity"],
+          "required": [
+            "type",
+            "entity"
+          ],
           "additionalProperties": false
         },
         {
           "type": "object",
           "properties": {
-            "type":   { "const": "set_motion" },
-            "entity": { "type": "string" },
-            "vel":    { "$ref": "#/definitions/vec3" },
-            "accel":  { "$ref": "#/definitions/vec3" }
+            "type": {
+              "const": "set_motion"
+            },
+            "entity": {
+              "type": "string"
+            },
+            "vel": {
+              "$ref": "#/definitions/vec3"
+            },
+            "accel": {
+              "$ref": "#/definitions/vec3"
+            }
           },
-          "required": ["type", "entity"],
+          "required": [
+            "type",
+            "entity"
+          ],
           "additionalProperties": false
         },
         {
           "type": "object",
           "properties": {
-            "type":   { "const": "remove" },
-            "entity": { "type": "string" }
+            "type": {
+              "const": "remove"
+            },
+            "entity": {
+              "type": "string"
+            }
           },
-          "required": ["type", "entity"],
+          "required": [
+            "type",
+            "entity"
+          ],
           "additionalProperties": false
         },
         {
           "type": "object",
           "properties": {
-            "type":   { "const": "toggle_controlled" },
-            "entity": { "type": "string" }
+            "type": {
+              "const": "toggle_controlled"
+            },
+            "entity": {
+              "type": "string"
+            }
           },
-          "required": ["type", "entity"],
+          "required": [
+            "type",
+            "entity"
+          ],
           "additionalProperties": false
         },
         {
           "type": "object",
           "properties": {
-            "type":   { "const": "set_controlled" },
-            "entity": { "type": "string" },
-            "value":  { "type": ["number", "boolean"], "default": true }
+            "type": {
+              "const": "set_controlled"
+            },
+            "entity": {
+              "type": "string"
+            },
+            "value": {
+              "type": [
+                "number",
+                "boolean"
+              ],
+              "default": true
+            }
           },
-          "required": ["type", "entity"],
+          "required": [
+            "type",
+            "entity"
+          ],
           "additionalProperties": false
         }
       ]
     },
-
     "event": {
       "type": "object",
       "properties": {
-        "trigger":   { "$ref": "#/definitions/trigger" },
-        "condition": { "$ref": "#/definitions/condition" },
-        "once":      { "type": "boolean", "default": true, "description": "Fire at most once (fired markers live in SimState, never in scene files)." },
+        "trigger": {
+          "$ref": "#/definitions/trigger"
+        },
+        "condition": {
+          "$ref": "#/definitions/condition"
+        },
+        "once": {
+          "type": "boolean",
+          "default": true,
+          "description": "Fire at most once (fired markers live in SimState, never in scene files)."
+        },
         "actions": {
           "type": "array",
-          "items": { "$ref": "#/definitions/action" }
+          "items": {
+            "$ref": "#/definitions/action"
+          }
         }
       },
+      "additionalProperties": false
+    },
+    "rigView": {
+      "type": "object",
+      "properties": {
+        "back": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Horizontal distance behind the followed entity."
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Eye height above the ground."
+        },
+        "lookAhead": {
+          "type": "number",
+          "description": "Aim this far in front of the followed entity."
+        },
+        "targetHeight": {
+          "type": "number",
+          "description": "Aim height above the ground."
+        },
+        "fovY": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Vertical field of view, radians."
+        }
+      },
+      "additionalProperties": false
+    },
+    "tileKind": {
+      "type": "object",
+      "description": "What one legend character of the terrain map means. With no 'floor' the cell is generated ground.",
+      "properties": {
+        "floor": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Fixed floor frame in the terrain sheet."
+        },
+        "floorFrames": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Animated floor: frame count."
+        },
+        "floorFps": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Animated floor: frames per second."
+        },
+        "wall": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Side-face frame; makes the cell a wall."
+        },
+        "wallBase": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Frame for the ground storey (defaults to 'wall')."
+        },
+        "top": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Frame for the wall's top (defaults to 'wall')."
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8,
+          "description": "Wall height in cells (default 1)."
+        },
+        "solid": {
+          "type": "boolean",
+          "description": "Blocks movement without being a wall (water)."
+        },
+        "props": {
+          "type": "boolean",
+          "description": "false keeps generated ground bare of plants."
+        },
+        "spawn": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Archetype name(s): one entity each at the cell centre, named '<archetype>@<x>,<z>'."
+        }
+      },
+      "additionalProperties": false
+    },
+    "biome": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "upTo": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 256,
+          "description": "Exclusive upper bound of the biome noise value (0..255) this band covers. Bands are matched in order; the last one catches the rest."
+        },
+        "floor": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "minItems": 1
+            }
+          ],
+          "description": "Ground frame, or several variants picked by hash."
+        },
+        "props": {
+          "type": "array",
+          "description": "What may grow on a cell, tried in order against one 0..999 roll. Chances must total at most 1000.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "cell": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Frame in the terrain sheet."
+              },
+              "perMille": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "scale": {
+                "$ref": "#/definitions/vec2",
+                "description": "Billboard size in world units."
+              },
+              "solid": {
+                "type": "boolean"
+              },
+              "radius": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 0.5
+              }
+            },
+            "required": [
+              "cell",
+              "perMille"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "floor"
+      ],
       "additionalProperties": false
     }
   }

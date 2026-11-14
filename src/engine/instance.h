@@ -29,7 +29,12 @@ struct Instance {
     // floor tile). Roll is deliberately absent — tiles and walls don't need it.
     float rotation = 0.0f;       // yaw about world-up, radians
     float pitch = 0.0f;          // pitch about the local right axis, radians
-    float billboard = 0.0f;      // 1 = always face camera, else use rotation/pitch
+    // Billboard mode: 0 = oriented quad (rotation/pitch), 1 = always face the
+    // camera, 2 = face the camera AND stay above the instance's own anchor
+    // height (pos.y): any vertex that would dip below it is slid along the eye
+    // ray up to that height, so the sprite keeps its on-screen shape but never
+    // sinks into the floor. Used for labels hung below a character's feet.
+    float billboard = 0.0f;
 
     // Animation: firstFrame, frameCount, framesPerSecond, animStart.
     Vec4 anim = {0, 1, 0, 0};
@@ -43,6 +48,17 @@ struct Instance {
     // (index returned by Renderer::loadSheet). Float because it rides the same
     // all-float GPU attribute stream; always an integral value.
     float sheet = 0.0f;
+
+    // Pivot offset, in world units along the quad's own right/up axes (camera
+    // right/up for billboards). The quad is drawn centred at pos + offset, so
+    // offset = {0, height/2} anchors a character at its feet, and a row of
+    // glyphs sharing one pos but different offsets forms a billboarded label
+    // that moves with a single motion formula.
+    Vec2 offset = {0, 0};
+
+    // X-ray: 1 = also draw this instance as a faint silhouette wherever it is
+    // hidden behind other geometry (the hero behind a wall). 0 = off.
+    float xray = 0.0f;
 };
 
 // Compile-time ABI guard: Instance is a binary contract with the GPU attribute
@@ -51,8 +67,12 @@ static_assert(std::is_standard_layout<Instance>::value, "Instance must be standa
 static_assert(sizeof(Vec2) == 8,  "Vec2 size changed — GPU attribute layout broken");
 static_assert(sizeof(Vec3) == 12, "Vec3 size changed — GPU attribute layout broken");
 static_assert(sizeof(Vec4) == 16, "Vec4 size changed — GPU attribute layout broken");
-static_assert(sizeof(Instance) == 24 * sizeof(float),
+static_assert(sizeof(Instance) == 27 * sizeof(float),
               "Instance size changed — update the GPU attribute layout in renderer.cpp");
+
+constexpr float BILLBOARD_NONE     = 0.0f;
+constexpr float BILLBOARD_FACE     = 1.0f;
+constexpr float BILLBOARD_GROUNDED = 2.0f;
 
 // --- Convenience builders (keep call sites in the demo / game readable) ------
 
@@ -94,6 +114,13 @@ inline void setMotion(Instance& i, Vec3 vel, Vec3 accel, float motionStart) {
     i.vel = vel;
     i.accel = accel;
     i.motionStart = motionStart;
+}
+
+// CPU mirror of the GPU motion formula — where an instance is at time t:
+//   pos(t) = pos + vel*(t-start) + 0.5*accel*(t-start)^2
+inline Vec3 motionAt(const Instance& inst, float t) {
+    float dt = t - inst.motionStart;
+    return inst.pos + inst.vel * dt + inst.accel * (0.5f * dt * dt);
 }
 
 } // namespace cv

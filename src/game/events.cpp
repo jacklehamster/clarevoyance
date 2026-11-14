@@ -114,7 +114,7 @@ static void runActions(const Scene& scene, SimState& state, float now,
                 auto p = positions.find(id);
                 if (p != positions.end()) it->second.pos = p->second;
                 setMotion(it->second, a.vel, a.accel, now);
-                out.upserts.emplace_back(id, it->second);
+                emitEntity(scene, state, id, out);   // labels follow along
                 break;
             }
 
@@ -131,9 +131,7 @@ static void runActions(const Scene& scene, SimState& state, float now,
                         out.removals.push_back(gid);
                     }
                 } else {
-                    state.entities.erase(id);
-                    state.attrs.erase(id);
-                    out.removals.push_back(id);
+                    removeEntity(scene, state, id, out);  // and its label
                 }
                 break;
             }

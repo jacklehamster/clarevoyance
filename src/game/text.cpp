@@ -27,4 +27,29 @@ std::vector<Instance> makeText(const std::string& s, Vec3 pos,
     return glyphs;
 }
 
+std::vector<Instance> makeLabel(const std::string& s, Vec3 anchor,
+                                 float glyphSize, float advance, float drop,
+                                 int fontSheet, Vec4 tint) {
+    std::vector<Instance> glyphs;
+    glyphs.reserve(s.size());
+    const float half = (static_cast<float>(s.size()) - 1.0f) * 0.5f;
+
+    for (size_t i = 0; i < s.size(); ++i) {
+        int ascii = static_cast<int>(static_cast<unsigned char>(s[i]));
+        int frame = ascii - FONT_FIRST_ASCII;
+        if (frame < 0 || frame >= FONT_NUM_GLYPHS) frame = 0;
+        if (frame == 0) continue;   // a space needs no quad
+
+        Instance inst = makeBillboard(anchor, {glyphSize, glyphSize});
+        inst.billboard = BILLBOARD_GROUNDED;
+        inst.offset = {(static_cast<float>(i) - half) * advance,
+                       -(drop + glyphSize * 0.5f)};
+        inst.sheet = static_cast<float>(fontSheet);
+        inst.tint  = tint;
+        setAnimation(inst, frame, 1, 0.0f, 0.0f);
+        glyphs.push_back(inst);
+    }
+    return glyphs;
+}
+
 } // namespace cv

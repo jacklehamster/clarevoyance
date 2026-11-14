@@ -1,15 +1,24 @@
-// main.cpp — stress-test demo for the Clarevoyance graphics engine.
+// main.cpp — the Clarevoyance executable: window, GL context, main loop.
 //
-// Spawns a large grid of penguin billboard sprites (GRID_W × GRID_H) in a
-// single applyState call. After that, nothing touches the instance buffer —
-// animation runs entirely in the shader via uTime. FPS is shown in the title.
+// Two things can run in it:
 //
-// Keys: C = toggle perspective/ortho  ESC = quit
+//   - a data-driven SCENE (CV_SCENE=path): the game layer loads the JSON, the
+//     fixed-tick sim advances it, and this file feeds it input and forwards the
+//     resulting Diffs to the renderer. Scenes with a "cameraRig" get the follow
+//     camera (top-down / dungeon views); scenes with "terrain" get their ground
+//     streamed in around the hero.
+//   - the STRESS TEST (no CV_SCENE): a dense grid of animated penguins under an
+//     orbiting camera, uploaded once and never touched again.
 //
-// Test mode env vars (web: URL query params via web/pre.js):
+// Config comes from env vars on desktop and URL query params on the web:
+//   CV_SCENE=path      — scene file to run
+//   CV_VIEW=topdown|dungeon — override the scene's starting camera-rig view
 //   CV_TEST_FRAMES=N   — render N frames then exit 0
 //   CV_FIXED_TIME=T    — use constant t=T every frame (deterministic)
 //   CV_SCREENSHOT=1    — dump framebuffer as base64 PNG on final test frame
+//
+// Keys handled here: ESC = quit, C = stress-test camera toggle. Everything
+// else goes to the scene's own key bindings.
 #include <SDL.h>
 #include <cmath>
 #include <cstdlib>
@@ -25,6 +34,7 @@
 #include <emscripten.h>
 #endif
 
+#include "camera_rig.h"
 #include "renderer.h"
 #include "screenshot.h"
 #include "sdl_input.h"
@@ -32,6 +42,7 @@
 #include "events.h"
 #include "input.h"
 #include "sim.h"
+#include "terrain.h"
 
 using namespace cv;
 
@@ -64,6 +75,11 @@ static const int WINDOW_H = 720;
 // Accumulator cap: after a pause/breakpoint/background tab, never try to catch
 // up more than this much sim time in one frame (avoids the spiral of death).
 static const double MAX_ACCUM = 0.25;
+
+// Follow camera: when a wall stops hiding the hero the camera drifts back out
+// to its full distance at this rate (per second, exponential). Moving IN is
+// instant — the hero must never be hidden, even for a frame.
+static const float CAM_RELAX_RATE = 5.0f;
 
 // Five animation flavours to cycle through so the grid looks varied.
 static const struct { int first; int count; } ANIMS[] = {
@@ -138,7 +154,79 @@ struct LoopContext {
     std::string scenePath = {};
     time_t      sceneMtime     = 0;
     Uint64      lastReloadCheck = 0;
+    // world view (scenes with terrain and/or a camera rig) — render-side only,
+    // none of it feeds back into the sim
+    TerrainStreamer streamer = {};
+    Vec3        focus = {0, 0, 0};   // what the camera/terrain follow; kept if the entity vanishes
+    float       camPull = 1.0f;      // smoothed camera distance fraction (see rigCamera)
+    bool        camPullValid = false;
+    int         viewOverride = -1;   // CV_VIEW: RIG_TOPDOWN / RIG_DUNGEON, or -1
+    std::string sceneName = {};      // file name shown in the window title
 };
+
+// Scenes with a world (terrain and/or camera rig): keep the ground streamed in
+// around the followed entity and point the follow camera at it. Runs once per
+// rendered frame at the continuous render time, so the camera glides with the
+// analytic motion instead of stepping with the sim ticks.
+static void updateWorldView(LoopContext* ctx, float t, float frameDt) {
+    const Scene& scene = *ctx->scene;
+    if (!scene.rig.enabled && !scene.terrain.enabled) return;
+
+    auto followed = ctx->sim->entities.find(scene.rigFollow);
+    if (followed != ctx->sim->entities.end())
+        ctx->focus = motionAt(followed->second, t);
+    else if (scene.rigFollow == 0 && !scene.initialState.cameras.empty())
+        ctx->focus = scene.initialState.cameras[0].target;
+
+    Diff diff;
+    ctx->streamer.update(scene.terrain, ctx->focus, diff);
+
+    if (scene.rig.enabled) {
+        const RigPose pose = rigPose(scene.rig, ctx->sim->rig, t, ctx->focus);
+        // In the dungeon view a wall between the eye and the hero pulls the
+        // camera in front of it. The high top-down view looks over the walls
+        // (the hero's x-ray silhouette covers that case), so the pull fades
+        // out with the view blend.
+        const float clear = scene.terrain.sightClearance(pose.pivot, pose.eye);
+        const float want  = 1.0f - (1.0f - clear) * rigBlend(ctx->sim->rig, t);
+        if (!ctx->camPullValid || want < ctx->camPull) {
+            ctx->camPull = want;
+            ctx->camPullValid = true;
+        } else {
+            ctx->camPull += (want - ctx->camPull)
+                          * (1.0f - std::exp(-CAM_RELAX_RATE * frameDt));
+        }
+        diff.replaceCameras  = true;
+        diff.cameras         = {rigCamera(pose, ctx->camPull)};
+        diff.setActiveCamera = true;
+        diff.activeCamera    = 0;
+    }
+    ctx->renderer->applyDiff(diff);
+}
+
+// Everything that has to happen when a scene becomes current: apply CV_VIEW,
+// upload its initial world, build fresh sim state and input source.
+static void startScene(LoopContext* ctx) {
+    Scene& scene = *ctx->scene;
+    if (ctx->viewOverride >= 0) scene.rig.startView = ctx->viewOverride;
+
+    Diff dropTerrain;
+    ctx->streamer.reset(dropTerrain);       // ids die with applyState below
+    ctx->renderer->applyState(scene.initialState);
+
+    if (ctx->sim) *ctx->sim = makeSimState(scene);
+    else          ctx->sim = new SimState(makeSimState(scene));
+
+    delete ctx->inputSrc;
+    // The source copies the bindings, so it stays valid across scene reloads.
+    ctx->inputSrc = scene.bindings.empty()
+        ? static_cast<InputSource*>(new NullInputSource())
+        : new BindingsInputSource(scene.bindings);
+    ctx->prevInput = InputFrame{};
+    ctx->pending   = InputFrame{};
+    ctx->camPullValid = false;
+    ctx->total = static_cast<int>(scene.initialState.instances.size());
+}
 
 // Load every sheet a scene references into the renderer's texture array; the
 // entity `sheet` field indexes the scene's sheet list. loadSheet is idempotent,
@@ -184,14 +272,7 @@ static void maybeHotReloadScene(LoopContext* ctx) {
     *ctx->scene = std::move(fresh);
     if (!loadSceneSheets(*ctx->renderer, *ctx->scene))
         SDL_Log("Scene hot-reload: sheet load failed — sprites may be blank");
-    ctx->renderer->applyState(ctx->scene->initialState);
-    *ctx->sim = makeSimState(*ctx->scene);  // fresh runtime state, tick 0
-    delete ctx->inputSrc;
-    ctx->inputSrc = ctx->scene->bindings.empty()
-        ? static_cast<InputSource*>(new NullInputSource())
-        : new BindingsInputSource(ctx->scene->bindings);
-    ctx->prevInput = InputFrame{};
-    ctx->pending   = InputFrame{};
+    startScene(ctx);                        // fresh runtime state, tick 0
     SDL_Log("Scene hot-reloaded: %s", ctx->scenePath.c_str());
 }
 #endif
@@ -256,8 +337,10 @@ static void frame(void* arg) {
     // the clock was pinned at startup and one step runs per frame at that
     // constant sim time, so test screenshots stay deterministic.
     Uint64 nowMs = SDL_GetTicks64();
+    float frameDt = 0.0f;   // wall time since the previous frame (0 in test mode)
     if (ctx->fixedTime < 0.0f) {
-        ctx->accum += (double)(nowMs - ctx->lastFrameTicks) / 1000.0;
+        frameDt = (float)(nowMs - ctx->lastFrameTicks) / 1000.0f;
+        ctx->accum += frameDt;
         if (ctx->accum > MAX_ACCUM) ctx->accum = MAX_ACCUM;
     }
     ctx->lastFrameTicks = nowMs;
@@ -289,7 +372,9 @@ static void frame(void* arg) {
         ? ctx->fixedTime
         : static_cast<float>(simNow + ctx->accum);
 
-    if (!ctx->scene) {
+    if (ctx->scene) {
+        updateWorldView(ctx, t, frameDt);
+    } else {
         // Stress-test demo: the only thing that changes each frame is the
         // camera orbit (uniforms only) — render-side, driven by continuous time.
         Diff diff;
@@ -332,12 +417,13 @@ static void frame(void* arg) {
     float elapsed = (float)(now - ctx->fpsWindowStart) / 1000.0f;
     if (elapsed >= 1.0f) {
         float fps = ctx->frameCount / elapsed;
-        std::string title =
-            "Clarevoyance — " + std::to_string(ctx->total) + " penguins  |  " +
-            std::to_string((int)std::round(fps)) + " FPS" +
-            "  (C: toggle camera  ESC: quit)";
+        std::string what = ctx->scene
+            ? ctx->sceneName
+            : std::to_string(ctx->total) + " penguins  (C: toggle camera)";
+        std::string title = "Clarevoyance — " + what + "  |  " +
+            std::to_string((int)std::round(fps)) + " FPS  (ESC: quit)";
         SDL_SetWindowTitle(ctx->window, title.c_str());
-        SDL_Log("FPS: %.1f  (%d penguins)", fps, ctx->total);
+        SDL_Log("FPS: %.1f  (%s)", fps, what.c_str());
         ctx->frameCount    = 0;
         ctx->fpsWindowStart = now;
     }
@@ -350,6 +436,7 @@ int main(int, char**) {
     float fixedTime   = -1.0f;
     bool  doScreenshot = false;
     std::string scenePath;   // CV_SCENE=path → run the data-driven scene instead of the demo
+    std::string viewName;    // CV_VIEW=topdown|dungeon → starting camera-rig view
 
 #ifdef __EMSCRIPTEN__
     // Read test params from URL query string directly — ENV scoping in
@@ -363,11 +450,13 @@ int main(int, char**) {
             if ((v = p.get('CV_FIXED_TIME')))  stringToUTF8(v, $1, 64);
             if ((v = p.get('CV_SCREENSHOT')))  stringToUTF8(v, $2, 64);
             if ((v = p.get('CV_SCENE')))       stringToUTF8(v, $3, 128);
-        }, buf, buf + 16, buf + 32, buf + 48);
+            if ((v = p.get('CV_VIEW')))        stringToUTF8(v, $4, 16);
+        }, buf, buf + 16, buf + 32, buf + 48, buf + 192);
         if (buf[0])    testFrames   = std::atoi(buf);
         if (buf[16])   fixedTime    = std::atof(buf + 16);
         if (buf[32])   doScreenshot = (std::atoi(buf + 32) != 0);
         if (buf[48])   scenePath    = (buf + 48);
+        if (buf[192])  viewName     = (buf + 192);
         SDL_Log("Test mode: frames=%d fixedTime=%.1f screenshot=%d",
                 testFrames, fixedTime, doScreenshot ? 1 : 0);
     }
@@ -376,7 +465,14 @@ int main(int, char**) {
     if (const char* v = getenv("CV_FIXED_TIME"))   fixedTime    = std::atof(v);
     if (const char* v = getenv("CV_SCREENSHOT"))   doScreenshot = (std::atoi(v) != 0);
     if (const char* v = getenv("CV_SCENE"))        scenePath    = v;
+    if (const char* v = getenv("CV_VIEW"))         viewName     = v;
 #endif
+
+    int viewOverride = -1;
+    if (viewName == "topdown")      viewOverride = RIG_TOPDOWN;
+    else if (viewName == "dungeon") viewOverride = RIG_DUNGEON;
+    else if (!viewName.empty())
+        SDL_Log("Ignoring CV_VIEW='%s' (expected topdown or dungeon)", viewName.c_str());
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
@@ -393,7 +489,7 @@ int main(int, char**) {
 #endif
 
     SDL_Window* window = SDL_CreateWindow(
-        "Clarevoyance — stress test",
+        "Clarevoyance",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         WINDOW_W, WINDOW_H, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
     if (!window) { SDL_Quit(); return 1; }
@@ -457,27 +553,32 @@ int main(int, char**) {
         return 1;
     }
 
-    int total = 0;
+    // --- Loop context: heap-allocated so it outlives main() on the web ------
+    Uint64 startTicks = SDL_GetTicks64();
+    LoopContext* ctx = new LoopContext{
+        window, &renderer,
+        startTicks, startTicks,
+        0, 0, 0, true,
+        testFrames, fixedTime, doScreenshot, 0, false,
+        scene, sim, inputSrc
+    };
+    ctx->lastFrameTicks = startTicks;
+    ctx->viewOverride = viewOverride;
+
     if (scene) {
         // --- Scene mode: upload the scene's world, prime the sim state ------
-        renderer.applyState(scene->initialState);
-        sim = new SimState(makeSimState(*scene));
-        total = static_cast<int>(scene->initialState.instances.size());
-        // Choose input source: bindings when defined, null otherwise. The source
-        // copies the bindings, so it stays valid across scene unload/reload.
-        if (!scene->bindings.empty())
-            inputSrc = new BindingsInputSource(scene->bindings);
-        else
-            inputSrc = new NullInputSource();
+        size_t slash = scenePath.find_last_of('/');
+        ctx->sceneName = slash == std::string::npos ? scenePath : scenePath.substr(slash + 1);
+        startScene(ctx);
     } else {
         // Stress-test demo has no scene; use a NullInputSource as placeholder.
-        inputSrc = new NullInputSource();
+        ctx->inputSrc = new NullInputSource();
         // --- Stress-test demo: a dense grid of penguins, uploaded once ------
         WorldState state;
         state.cameras     = buildCameras(0.0f);
         state.activeCamera = 0;
 
-        total = GRID_W * GRID_H;
+        int total = GRID_W * GRID_H;
         SDL_Log("Spawning %d penguins…", total);
 
         EntityId id = 1;
@@ -508,30 +609,21 @@ int main(int, char**) {
             state.instances[id] = ghost;
         }
         total += NGHOSTS;
+        ctx->total = total;
 
         renderer.applyState(state);  // one upload — never touched again
     }
-    SDL_Log("Buffer uploaded. Rendering %d instances per frame.", total);
+    SDL_Log("Buffer uploaded. Rendering %d instances per frame.", ctx->total);
 
     // --- Run loop -----------------------------------------------------------
-    Uint64 startTicks = SDL_GetTicks64();
-
-#ifdef __EMSCRIPTEN__
-    // Heap-allocate so the context outlives main() on the web.
-    LoopContext* ctx = new LoopContext{
-        window, &renderer,
-        startTicks, startTicks,
-        0, 0, total, true,
-        testFrames, fixedTime, doScreenshot, 0, false,
-        scene, sim, inputSrc
-    };
-    ctx->lastFrameTicks = startTicks;
     // CV_FIXED_TIME maps to a fixed tick count: tick = round(T / SIM_DT).
     if (fixedTime >= 0.0f) {
         uint64_t fixedTick = static_cast<uint64_t>(std::llround(fixedTime / SIM_DT));
         ctx->clock.tick = fixedTick;
-        if (sim) sim->clock.tick = fixedTick;
+        if (ctx->sim) ctx->sim->clock.tick = fixedTick;
     }
+
+#ifdef __EMSCRIPTEN__
     // fps=0  → requestAnimationFrame (display-synced, pauses in background) — interactive
     // fps=60 → setTimeout at 60 fps (runs even in hidden tabs)           — test mode
     // simulate_infinite_loop=1: main() never returns; exit(0) terminates and
@@ -539,34 +631,21 @@ int main(int, char**) {
     int loopFps = (ctx->testFrames > 0) ? 60 : 0;
     emscripten_set_main_loop_arg(frame, ctx, loopFps, 1);
 #else
-    LoopContext ctx{
-        window, &renderer,
-        startTicks, startTicks,
-        0, 0, total, true,
-        testFrames, fixedTime, doScreenshot, 0, false,
-        scene, sim, inputSrc
-    };
-    ctx.lastFrameTicks = startTicks;
-    // CV_FIXED_TIME maps to a fixed tick count: tick = round(T / SIM_DT).
-    if (fixedTime >= 0.0f) {
-        uint64_t fixedTick = static_cast<uint64_t>(std::llround(fixedTime / SIM_DT));
-        ctx.clock.tick = fixedTick;
-        if (sim) sim->clock.tick = fixedTick;
-    }
     if (scene) {
-        ctx.scenePath = scenePath;
+        ctx->scenePath = scenePath;
         struct stat st{};
-        if (stat(scenePath.c_str(), &st) == 0) ctx.sceneMtime = st.st_mtime;
+        if (stat(scenePath.c_str(), &st) == 0) ctx->sceneMtime = st.st_mtime;
     }
-    while (ctx.running) frame(&ctx);
+    while (ctx->running) frame(ctx);
 
     renderer.shutdown();
     SDL_GL_DeleteContext(glCtx);
     SDL_DestroyWindow(window);
     SDL_Quit();
-    delete ctx.inputSrc;  // via ctx: hot-reload may have replaced the input source
-    delete sim;
+    delete ctx->inputSrc;
+    delete ctx->sim;
     delete scene;
+    delete ctx;
 #endif
     return 0;
 }

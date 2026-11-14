@@ -24,7 +24,7 @@ Scene buildScene() {
     Instance player = makeBillboard({0, 0.45f, 5}, {0.9f, 0.9f});
     s.initialState.instances[1] = player;
     s.nameToId["player"] = 1;
-    s.attrs[1] = EntityAttrs{true, 3.0f};
+    s.attrs[1] = makeAttrs(true, 3.0f);
 
     Instance walker = makeBillboard({6, 0.45f, 5}, {0.9f, 0.9f});
     walker.vel = {-0.8f, 0, 0};              // drifts toward the player
@@ -35,7 +35,7 @@ Scene buildScene() {
     Instance buddy = makeBillboard({2, 0.45f, 7}, {0.9f, 0.9f});
     s.initialState.instances[3] = buddy;
     s.nameToId["buddy"] = 3;
-    s.attrs[3] = EntityAttrs{false, 2.0f};
+    s.attrs[3] = makeAttrs(false, 2.0f);
 
     // start: raise a flag
     Event start;

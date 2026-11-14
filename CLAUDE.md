@@ -189,7 +189,7 @@ make clean    # remove build/ and tools/imgdiff
 ### WebAssembly (browser)
 
 ```bash
-make build-wasm   # compile → build/web/index.{html,js,wasm,data}
+make build-wasm   # compile → build/web/stress.{html,js,wasm,data}
 make run-wasm     # build-wasm + emrun (serves on localhost, opens browser)
 ```
 
@@ -309,28 +309,45 @@ Agents working on this repo should drive tasks to completion without waiting to 
 
 ## Current Status
 
-The engine core and a data-driven script layer are implemented and live at
-https://clare.dobuki.net (landing page with demo cards).
+The engine core, a data-driven script layer, and an explorable world are implemented and
+live at https://clare.dobuki.net (landing page with demo cards).
 
 **What exists:**
-- Renderer: single-draw-call instanced billboard sprites, motion + frame animation
-  evaluated entirely on the GPU from `uTime` (see `docs/ARCHITECTURE.md`)
-- Per-instance `tint` (RGBA multiplier) — the rendering hook for translucent shims
+- Renderer: instanced quads, motion + frame animation evaluated entirely on the GPU from
+  `uTime` (see `docs/ARCHITECTURE.md`). Passes: optional sky gradient, opaque, optional x-ray
+  silhouettes (the hero stays readable behind a wall), translucent (shims)
+- Per-instance `tint`, pivot `offset` (stand a sprite on its feet; billboarded labels), and
+  "grounded" billboards that never sink into the floor
+- **Explore demo** (`src/levels/explore.json`, `make demo-explore` / `make demo-dungeon`): the
+  flagship — a hand-drawn core (walled ruins, roads, a hedged village, a pond) set in endless
+  procedural wilds, walkable in two views: **top-down at 45°** and a **third-person dungeon
+  crawl**. Q/E turn the camera 90°, V switches view. No interactions yet — it is a furnished
+  world to walk around in
+- Terrain (`src/game/terrain.*`): an ASCII tile map + legend in the scene JSON; every other
+  cell is generated from `hash(seed, x, z)` (biomes, ground variants, plants), so the world is
+  infinite and nothing is saved; cells are streamed in around the hero
+- Deterministic collision against walls, water, solid plants and solid entities (slide along)
+- Follow-camera rig (`src/engine/camera_rig.h`): two views, eased quarter turns, pulls in
+  front of walls; its state lives in the SimState, movement is camera-relative
+- Placeholder art convention: **every character is the penguin**, with a small label under its
+  feet saying what it stands for (`HERO`, `ENEMY`, `BOSS`, `NPC`, `OBJECT`, `DECOR`). Ground,
+  walls and plants come from `art/terrain.png`, drawn by `scripts/gen_terrain.py`
+- Patrols driven by the tick counter, with a `phase` that makes a translucent twin a true
+  one-second-ahead shim
 - Data-driven scenes (`src/levels/*.json`): entities, cameras, events
-  (trigger/condition/action), archetypes with named clips, flags/conditions, key bindings,
-  free player movement
-- Bitmap-font text (`src/game/text.h`, `scripts/gen_font.py` → `art/font.png`): scene "text"
-  entities expand to one glyph Instance per character — no renderer changes needed
-- Quest demo (`src/levels/quest.json`, `make demo-quest`): the flagship demo — 3 keys, a
-  counter-gated door, a patrolling enemy previewed by a real 1-second-ahead shim ghost (see
-  `docs/GAME_LAYER.md`, "Demos"), and a win room
+  (trigger/condition/action), archetypes with named clips, flags/conditions, key bindings
+- Bitmap-font text (`src/game/text.h`, `scripts/gen_font.py` → `art/font.png`)
+- Quest demo (`src/levels/quest.json`, `make demo-quest`): 3 keys, a counter-gated door, a
+  patrolling enemy with a shim ghost, and a win room — the event system as a small game
 - Scene hot-reload on desktop: edit the JSON while `make demo` runs and it reloads
-- Cross-platform: desktop (OpenGL 3.3 Core) and browser (WebGL 2) with pixel-identical
-  output verified by `make test-parity`
+- Web shell (`web/shell.html`): full-window 16:9 canvas with a controls reminder
+- Cross-platform: desktop (OpenGL 3.3 Core) and browser (WebGL 2), built with
+  `-ffp-contract=off` so both compute the same floats
 
-**Make targets:** `build`, `run`, `demo` (SCENE=…), `demo-quest`, `demo-world`, `demo-events`,
-`demo-controls`, `demo-menu`, `build-wasm`, `run-wasm`, `deploy`, `test`, `test-unit`,
-`test-wasm`, `test-parity`, `clean`.
+**Make targets:** `build`, `run`, `demo` (SCENE=…), `demo-explore`, `demo-dungeon`,
+`demo-quest`, `demo-world`, `demo-events`, `demo-controls`, `demo-menu`, `build-wasm`,
+`run-wasm`, `deploy`, `test`, `test-unit`, `test-wasm`, `test-parity`, `clean`.
 
-**Next up:** see `docs/specs/` — scene coordinator, world building (textured grid quads),
-in-engine map editor, and the shim lookahead system (60 Hz fixed tick, lockstep-friendly).
+**Next up:** interactions in the explore world (pick up OBJECTs, talk to NPCs, enemies that
+hurt), real sprites to replace the penguins, then see `docs/specs/` — scene coordinator,
+in-engine map editor, and the general shim lookahead (fork the sim N ticks ahead).

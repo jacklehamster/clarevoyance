@@ -7,8 +7,10 @@
 // top-level "version" (currently 1): missing warns on stderr, newer errors.
 #include "scene.h"
 #include "json.h"
+#include "sim.h"
 #include "text.h"
 
+#include <cmath>
 #include <cstdio>
 
 namespace cv {
@@ -179,7 +181,70 @@ bool readEntity(const JsonValue& e, EntityAttrs& attrs, const Archetype* arch,
     // controlled=true; speed is its movement rate in world units / second.
     if (const JsonValue* c = e.find("controlled")) attrs.controlled = c->boolean(false);
     if (const JsonValue* s = e.find("speed"))      attrs.speed = static_cast<float>(s->number(attrs.speed));
+
+    // Pivot offset within the quad's own plane (world units). [0, h/2] stands a
+    // billboard on its feet: `pos` is then the point where it touches the ground.
+    if (!readVec2(e.find("offset"), inst.offset, ctx + ".offset", error)) return false;
+    if (const JsonValue* x = e.find("xray")) inst.xray = x->boolean(false) ? 1.0f : 0.0f;
+
+    // Collision: a circle of `radius` around pos; `solid` entities block the
+    // controlled ones.
+    if (const JsonValue* r = e.find("radius")) attrs.radius = static_cast<float>(r->number(attrs.radius));
+    if (const JsonValue* s = e.find("solid"))  attrs.solid = s->boolean(false);
+    if (attrs.radius < 0.0f || attrs.radius > 0.5f)
+        return failCtx(error, ctx + ".radius", "must be between 0 and 0.5");
+
+    if (const JsonValue* aa = e.find("autoAnim")) {
+        attrs.autoAnim = aa->boolean(false);
+        if (attrs.autoAnim && (!arch || !arch->clips.count("walk") || !arch->clips.count("idle")))
+            return failCtx(error, ctx + ".autoAnim",
+                           "requires an archetype with 'walk' and 'idle' clips");
+    }
+
+    // Patrol: walk to pos + delta and back, forever. `phase` (seconds) starts
+    // the patrol that far along — give a translucent twin a phase of 1 and it
+    // shows where the original will be one second from now.
+    if (const JsonValue* p = e.find("patrol")) {
+        Vec3 delta = {0, 0, 0};
+        if (!readVec3(p->find("delta"), delta, ctx + ".patrol.delta", error)) return false;
+        float speed = p->find("speed") ? static_cast<float>(p->find("speed")->number(1.0)) : 1.0f;
+        float phase = p->find("phase") ? static_cast<float>(p->find("phase")->number(0.0)) : 0.0f;
+        float dist = length(delta);
+        if (dist <= 0.0f)  return failCtx(error, ctx + ".patrol.delta", "must not be zero");
+        if (speed <= 0.0f) return failCtx(error, ctx + ".patrol.speed", "must be positive");
+        if (phase < 0.0f)  return failCtx(error, ctx + ".patrol.phase", "must not be negative");
+        attrs.patrol.enabled = true;
+        attrs.patrol.a = inst.pos;
+        attrs.patrol.b = inst.pos + delta;
+        long legTicks = std::lround(dist / speed / SIM_DT);
+        attrs.patrol.legTicks = static_cast<uint32_t>(legTicks < 1 ? 1 : legTicks);
+        attrs.patrol.phaseTicks = static_cast<uint32_t>(std::lround(phase / SIM_DT));
+        Vec3 vel;
+        patrolPose(attrs.patrol, 0, inst.pos, vel, inst.motionStart);
+        inst.vel = vel;
+        attrs.faceDir = vel;
+    }
+
+    // Labels hang from the sprite's feet: `pos` itself when a pivot offset
+    // stands it on the ground, otherwise the bottom edge of the quad.
+    attrs.labelDy = e.find("offset") ? 0.0f : -std::fabs(inst.scale.y) * 0.5f;
     out = inst;
+    return true;
+}
+
+bool readRigView(const JsonValue* v, RigView& view, const std::string& ctx, std::string& error) {
+    if (!v) return true;
+    if (!v->isObject()) return failCtx(error, ctx, "must be an object");
+    auto num = [&](const char* key, float& dst) {
+        if (const JsonValue* x = v->find(key)) dst = static_cast<float>(x->number(dst));
+    };
+    num("back", view.back);
+    num("height", view.height);
+    num("lookAhead", view.lookAhead);
+    num("targetHeight", view.targetHeight);
+    num("fovY", view.fovY);
+    if (view.back < 0.0f || view.height <= 0.0f || view.fovY <= 0.0f)
+        return failCtx(error, ctx, "back must be >= 0; height and fovY must be positive");
     return true;
 }
 
@@ -400,74 +465,176 @@ bool loadScene(const char* path, Scene& out, std::string& error) {
         }
     }
 
+    // Label style — how entity "label" strings are drawn (see LabelStyle).
+    if (const JsonValue* ls = root.find("labelStyle")) {
+        if (const JsonValue* v = ls->find("sheet"))   out.labelStyle.sheet = static_cast<int>(v->number(0));
+        if (const JsonValue* v = ls->find("height"))  out.labelStyle.height = static_cast<float>(v->number(out.labelStyle.height));
+        if (const JsonValue* v = ls->find("advance")) out.labelStyle.advance = static_cast<float>(v->number(out.labelStyle.advance));
+        if (const JsonValue* v = ls->find("drop"))    out.labelStyle.drop = static_cast<float>(v->number(out.labelStyle.drop));
+    }
+
+    // Terrain — the authored tile map and the procedural wilds around it. Its
+    // tiles are NOT entities (the TerrainStreamer instances them on demand);
+    // only legend "spawn" entries become entities, below.
+    std::vector<TerrainSpawn> spawns;
+    if (const JsonValue* t = root.find("terrain")) {
+        if (!readTerrain(*t, out.terrain, spawns, error)) return false;
+        if (out.terrain.sheet < 0 || out.terrain.sheet >= static_cast<int>(out.sheets.size()))
+            return failCtx(error, "terrain.sheet", "is not an index into 'sheets'");
+    }
+
     // Entities — assign numeric ids starting at 1, record name → id. An entity
     // with an "archetype" field takes the archetype's fields as defaults and
     // overrides them key-by-key. Duplicate ids and unknown archetypes are errors.
     EntityId nextId = 1;
-    if (const JsonValue* ents = root.find("entities")) {
-        if (ents->isArray()) {
-            for (size_t i = 0; i < ents->arr.size(); ++i) {
-                const JsonValue& e = ents->arr[i];
-                const std::string ctx = ctxIndex("entities", i);
-                std::string name = e.find("id") ? e.find("id")->string() : "";
-                if (!name.empty() && out.nameToId.count(name))
-                    return failCtx(error, ctx, "duplicate entity id '" + name + "'");
+    auto addEntity = [&](const JsonValue& e, const std::string& ctx) -> bool {
+        std::string name = e.find("id") ? e.find("id")->string() : "";
+        if (!name.empty() && out.nameToId.count(name))
+            return failCtx(error, ctx, "duplicate entity id '" + name + "'");
 
-                // Text entities ("text": "...") expand to one glyph Instance per
-                // character (src/game/text.h) instead of the usual single Instance.
-                // The name binds to the FIRST glyph's id; textRangeEnd records the
-                // [first,last] id range so `remove` can despawn the whole string.
-                if (const JsonValue* textVal = e.find("text")) {
-                    std::string content = textVal->string();
-                    Vec3 pos = {0, 0, 0};
-                    Vec2 charSize = {0.5f, 0.5f};
-                    Vec4 tint = {1, 1, 1, 1};
-                    int sheet = 0;
-                    if (!readVec3(e.find("pos"), pos, ctx + ".pos", error)) return false;
-                    if (!readVec2(e.find("charSize"), charSize, ctx + ".charSize", error)) return false;
-                    if (!readVec4(e.find("tint"), tint, ctx + ".tint", error)) return false;
-                    if (const JsonValue* sh = e.find("sheet")) sheet = static_cast<int>(sh->number(0));
+        // Text entities ("text": "...") expand to one glyph Instance per
+        // character (src/game/text.h) instead of the usual single Instance.
+        // The name binds to the FIRST glyph's id; textRangeEnd records the
+        // [first,last] id range so `remove` can despawn the whole string.
+        if (const JsonValue* textVal = e.find("text")) {
+            std::string content = textVal->string();
+            Vec3 pos = {0, 0, 0};
+            Vec2 charSize = {0.5f, 0.5f};
+            Vec4 tint = {1, 1, 1, 1};
+            int sheet = 0;
+            if (!readVec3(e.find("pos"), pos, ctx + ".pos", error)) return false;
+            if (!readVec2(e.find("charSize"), charSize, ctx + ".charSize", error)) return false;
+            if (!readVec4(e.find("tint"), tint, ctx + ".tint", error)) return false;
+            if (const JsonValue* sh = e.find("sheet")) sheet = static_cast<int>(sh->number(0));
 
-                    std::vector<Instance> glyphs =
-                        makeText(content, pos, charSize.x, charSize.y, sheet, tint);
+            std::vector<Instance> glyphs =
+                makeText(content, pos, charSize.x, charSize.y, sheet, tint);
 
-                    EntityId firstId = nextId++;   // reserved even if content is empty
-                    if (!name.empty()) out.nameToId[name] = firstId;
-                    if (!glyphs.empty()) {
-                        out.initialState.instances[firstId] = glyphs[0];
-                        for (size_t k = 1; k < glyphs.size(); ++k)
-                            out.initialState.instances[nextId++] = glyphs[k];
-                        out.textRangeEnd[firstId] = nextId - 1;
-                    }
-                    continue;
-                }
+            EntityId firstId = nextId++;   // reserved even if content is empty
+            if (!name.empty()) out.nameToId[name] = firstId;
+            if (!glyphs.empty()) {
+                out.initialState.instances[firstId] = glyphs[0];
+                for (size_t k = 1; k < glyphs.size(); ++k)
+                    out.initialState.instances[nextId++] = glyphs[k];
+                out.textRangeEnd[firstId] = nextId - 1;
+            }
+            return true;
+        }
 
-                EntityId id = nextId++;
-                if (!name.empty()) out.nameToId[name] = id;
+        EntityId id = nextId++;
+        if (!name.empty()) out.nameToId[name] = id;
 
-                const JsonValue* merged = &e;
-                JsonValue mergedStorage;
-                const Archetype* arch = nullptr;
-                std::string archName;
-                if (const JsonValue* an = e.find("archetype")) {
-                    archName = an->string();
-                    auto aj = archetypeJson.find(archName);
-                    if (aj == archetypeJson.end())
-                        return failCtx(error, ctx, "unknown archetype '" + archName + "'");
-                    mergedStorage = mergeWithArchetype(*aj->second, e);
-                    merged = &mergedStorage;
-                    arch = &out.archetypes[archName];
-                    out.archetypeOf[id] = archName;
-                }
+        const JsonValue* merged = &e;
+        JsonValue mergedStorage;
+        const Archetype* arch = nullptr;
+        std::string archName;
+        if (const JsonValue* an = e.find("archetype")) {
+            archName = an->string();
+            auto aj = archetypeJson.find(archName);
+            if (aj == archetypeJson.end())
+                return failCtx(error, ctx, "unknown archetype '" + archName + "'");
+            mergedStorage = mergeWithArchetype(*aj->second, e);
+            merged = &mergedStorage;
+            arch = &out.archetypes[archName];
+            out.archetypeOf[id] = archName;
+        }
 
-                EntityAttrs attrs;
-                Instance inst;
-                if (!readEntity(*merged, attrs, arch, archName, inst, ctx, error))
-                    return false;
-                out.initialState.instances[id] = inst;
-                out.attrs[id] = attrs;
+        EntityAttrs attrs;
+        Instance inst;
+        if (!readEntity(*merged, attrs, arch, archName, inst, ctx, error))
+            return false;
+        out.initialState.instances[id] = inst;
+        out.attrs[id] = attrs;
+        if (attrs.patrol.enabled) out.patrolIds.push_back(id);
+        if (attrs.solid)          out.solidIds.push_back(id);
+
+        // Label: billboarded glyphs under the feet, sharing the owner's motion.
+        if (const JsonValue* lab = merged->find("label")) {
+            Vec4 tint = {1, 1, 1, 1};
+            if (!readVec4(merged->find("labelTint"), tint, ctx + ".labelTint", error))
+                return false;
+            const LabelStyle& st = out.labelStyle;
+            Vec3 anchor = inst.pos + Vec3{0.0f, attrs.labelDy, 0.0f};
+            std::vector<Instance> glyphs = makeLabel(
+                lab->string(), anchor, st.height, st.advance, st.drop, st.sheet, tint);
+            std::vector<EntityId>& ids = out.labels[id];
+            for (Instance& g : glyphs) {
+                setMotion(g, inst.vel, inst.accel, inst.motionStart);
+                out.initialState.instances[nextId] = g;
+                ids.push_back(nextId++);
             }
         }
+        return true;
+    };
+
+    if (const JsonValue* ents = root.find("entities")) {
+        if (ents->isArray()) {
+            for (size_t i = 0; i < ents->arr.size(); ++i)
+                if (!addEntity(ents->arr[i], ctxIndex("entities", i))) return false;
+        }
+    }
+
+    // Entities the terrain map asks for: one per "spawn" cell, standing at the
+    // cell centre, named "<archetype>@<x>,<z>".
+    for (const TerrainSpawn& sp : spawns) {
+        char name[96];
+        std::snprintf(name, sizeof(name), "%s@%d,%d", sp.archetype.c_str(), sp.x, sp.z);
+        JsonValue e;
+        e.type = JsonValue::Type::Object;
+        auto str = [](const std::string& v) {
+            JsonValue j; j.type = JsonValue::Type::String; j.strVal = v; return j;
+        };
+        auto num = [](double v) {
+            JsonValue j; j.type = JsonValue::Type::Number; j.numVal = v; return j;
+        };
+        JsonValue pos;
+        pos.type = JsonValue::Type::Array;
+        pos.arr = {num(sp.x + 0.5), num(0.0), num(sp.z + 0.5)};
+        e.obj.emplace_back("id", str(name));
+        e.obj.emplace_back("archetype", str(sp.archetype));
+        e.obj.emplace_back("pos", pos);
+        if (!addEntity(e, std::string("terrain spawn '") + name + "'")) return false;
+    }
+
+    // Camera rig — the follow camera with its two views (engine/camera_rig.h).
+    if (const JsonValue* rig = root.find("cameraRig")) {
+        out.rig.enabled = true;
+        if (!readRigView(rig->find("topdown"), out.rig.topdown, "cameraRig.topdown", error)) return false;
+        if (!readRigView(rig->find("dungeon"), out.rig.dungeon, "cameraRig.dungeon", error)) return false;
+        if (const JsonValue* v = rig->find("view")) {
+            const std::string view = v->string();
+            if      (view == "topdown") out.rig.startView = RIG_TOPDOWN;
+            else if (view == "dungeon") out.rig.startView = RIG_DUNGEON;
+            else return failCtx(error, "cameraRig.view", "unknown view '" + view + "'");
+        }
+        if (const JsonValue* f = rig->find("facing")) {
+            const std::string facing = f->string();
+            if      (facing == "north") out.rig.startQuarter = 0;
+            else if (facing == "east")  out.rig.startQuarter = 1;
+            else if (facing == "south") out.rig.startQuarter = 2;
+            else if (facing == "west")  out.rig.startQuarter = 3;
+            else return failCtx(error, "cameraRig.facing", "unknown facing '" + facing + "'");
+        }
+        if (const JsonValue* f = rig->find("follow")) {
+            if (!checkEntityRef(out, f->string(), "follow", "cameraRig", error)) return false;
+            out.rigFollow = out.idOf(f->string());
+        } else {
+            // Default: the first controlled entity.
+            for (const auto& kv : out.attrs)
+                if (kv.second.controlled && (out.rigFollow == 0 || kv.first < out.rigFollow))
+                    out.rigFollow = kv.first;
+            if (out.rigFollow == 0)
+                return failCtx(error, "cameraRig", "needs 'follow' or a controlled entity");
+        }
+    }
+
+    // Sky backdrop: a vertical gradient (zenith → horizon → ground).
+    if (const JsonValue* sky = root.find("sky")) {
+        Sky& s = out.initialState.sky;
+        s.enabled = true;
+        if (!readVec3(sky->find("zenith"),  s.zenith,  "sky.zenith",  error)) return false;
+        if (!readVec3(sky->find("horizon"), s.horizon, "sky.horizon", error)) return false;
+        if (!readVec3(sky->find("ground"),  s.ground,  "sky.ground",  error)) return false;
     }
 
     // Events — parsed after entities so triggers/actions can validate every

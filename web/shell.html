@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clarevoyance</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0a0a0f; overflow: hidden; }
+
+    /* The game renders at 1280x720; the canvas is scaled to fill the window
+       while keeping 16:9, letterboxed on whichever side has room to spare. */
+    canvas {
+      display: block;
+      position: fixed;
+      inset: 0;
+      margin: auto;
+      width: min(100vw, calc(100vh * 16 / 9));
+      height: min(100vh, calc(100vw * 9 / 16));
+      outline: none;
+    }
+
+    .overlay {
+      position: fixed;
+      color: #c8b8e8;
+      font: 13px/1.4 Georgia, serif;
+      letter-spacing: 0.08em;
+      text-shadow: 0 1px 3px #000, 0 0 8px #000;
+    }
+    #back { top: 10px; left: 14px; text-decoration: none; opacity: 0.7; }
+    #back:hover { opacity: 1; }
+    #hint { left: 0; right: 0; bottom: 12px; text-align: center; pointer-events: none; }
+    #status { left: 0; right: 0; top: 46%; text-align: center; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+  <a id="back" class="overlay" href="index.html">&larr; demos</a>
+  <div id="hint" class="overlay"></div>
+  <div id="status" class="overlay">Loading&hellip;</div>
+
+  <script>
+    // Controls reminder, per demo scene (the scene file owns the actual key
+    // bindings; this is only the on-screen text).
+    var HINTS = {
+      'explore.json': 'WASD / arrows: walk &nbsp;&middot;&nbsp; Q / E: turn the camera &nbsp;&middot;&nbsp; V or space: top-down &harr; dungeon view',
+      'quest.json':   'WASD / arrows: walk &nbsp;&middot;&nbsp; find the 3 keys, mind the patrol',
+      'world.json':   'WASD / arrows: walk',
+      'controls.json':'WASD / arrows: walk &nbsp;&middot;&nbsp; space: toggle the buddy',
+      'menu.json':    'Up / Down: choose'
+    };
+    var params = new URLSearchParams(location.search);
+    var scene = (params.get('CV_SCENE') || '').split('/').pop();
+    document.getElementById('hint').innerHTML =
+      HINTS[scene] || (scene ? '' : 'C: perspective &harr; orthographic');
+
+    var statusEl = document.getElementById('status');
+    var Module = {
+      canvas: document.getElementById('canvas'),
+      print: function (text) { console.log(text); },
+      printErr: function (text) { console.error(text); },
+      setStatus: function (text) { statusEl.textContent = text; },
+      onRuntimeInitialized: function () { statusEl.textContent = ''; }
+    };
+    window.onerror = function () { statusEl.textContent = 'Something went wrong — see the browser console.'; };
+  </script>
+  {{{ SCRIPT }}}
+</body>
+</html>

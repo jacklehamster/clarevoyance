@@ -47,6 +47,9 @@ struct SimState {
     std::vector<uint8_t> fired;   // per-event fired markers, indexed by event position
     SimClock clock;               // the sim's own tick clock
     bool started = false;         // start triggers fire on the first step only
+    // The follow camera's facing and view. Sim state, not render state: its
+    // facing decides which way "forward" is for camera-relative movement.
+    RigState rig;
 
     // Runtime-spawned dialogue text (Scene::dialogueText config, consumed by
     // Action::Type::Dialogue in events.cpp): ids are allocated starting well
@@ -71,5 +74,18 @@ SimState makeSimState(const Scene& scene);
 // the same (scene, state, actions) always produces the same result.
 void stepSim(const Scene& scene, SimState& state,
              const ResolvedActions& actions, Diff& out);
+
+// Where a patrol is at `tick`: the start point, velocity and time origin of the
+// leg it is currently walking. A pure function of the tick counter.
+void patrolPose(const Patrol& patrol, uint64_t tick,
+                Vec3& pos, Vec3& vel, float& motionStart);
+
+// Queue an entity's current instance for the renderer, and bring everything
+// attached to it (its label glyphs) along: they take the same motion formula.
+// Call after changing an entity's pos/vel/accel/motionStart.
+void emitEntity(const Scene& scene, SimState& state, EntityId id, Diff& out);
+
+// Remove an entity and everything attached to it from the sim and the renderer.
+void removeEntity(const Scene& scene, SimState& state, EntityId id, Diff& out);
 
 } // namespace cv

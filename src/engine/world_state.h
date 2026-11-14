@@ -16,11 +16,22 @@ namespace cv {
 
 using EntityId = uint32_t;
 
+// Optional sky backdrop: a vertical gradient evaluated per pixel from the view
+// ray, so the horizon stays put as the camera pitches and turns. When disabled
+// the renderer clears to its flat background colour instead.
+struct Sky {
+    bool enabled = false;
+    Vec3 zenith  = {0.20f, 0.42f, 0.80f};  // straight up
+    Vec3 horizon = {0.74f, 0.86f, 0.96f};  // at eye level
+    Vec3 ground  = {0.16f, 0.20f, 0.18f};  // below the horizon (beyond the map)
+};
+
 // A complete snapshot of the renderable world.
 struct WorldState {
     std::unordered_map<EntityId, Instance> instances;
     std::vector<Camera> cameras;
     int activeCamera = 0;
+    Sky sky;
 };
 
 // An incremental change. Apply on top of current renderer state.

@@ -1,5 +1,7 @@
 CXX      := clang++
-CXXFLAGS := -std=c++17 -Wall -Wextra -O2 -DGL_SILENCE_DEPRECATION -Isrc/engine -Isrc/game
+# -ffp-contract=off: never fuse a*b+c into one FMA instruction. arm64 would,
+# WASM cannot — and the sim must compute the same floats on both.
+CXXFLAGS := -std=c++17 -Wall -Wextra -O2 -ffp-contract=off -DGL_SILENCE_DEPRECATION -Isrc/engine -Isrc/game
 SDL2     := $(shell sdl2-config --cflags --libs)
 UNAME_S  := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
@@ -11,13 +13,14 @@ endif
 # Emscripten — invoked via subshell so emsdk_env.sh is sourced per call.
 EMSDK_ENV := source $(HOME)/emsdk/emsdk_env.sh 2>/dev/null || true
 WASM_OUT  := build/web
-WASM_FLAGS := -std=c++17 -O2 -Isrc/engine -Isrc/game \
+WASM_FLAGS := -std=c++17 -O2 -ffp-contract=off -Isrc/engine -Isrc/game \
               -sUSE_SDL=2 -sUSE_WEBGL2=1 -sFULL_ES3=1 \
               -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
               -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=1 \
               --emrun \
               --preload-file art \
               --preload-file src/levels@scenes \
+              --shell-file web/shell.html \
               --pre-js web/pre.js
 
 SRC      := $(wildcard src/engine/*.cpp) $(wildcard src/game/*.cpp)
@@ -28,6 +31,11 @@ BIN      := build/clarevoyance
 APP       := build/Clarevoyance.app
 EXE       := $(APP)/Contents/MacOS/clarevoyance
 
+# Browser for `make test-wasm`. It is launched as its own instance with a
+# throwaway profile and background throttling off: a test tab that opens behind
+# other windows is otherwise clamped to 1 frame per second and times out.
+CHROME ?= /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+
 TEST_DIR  := build/test
 TEST_UNIT := build/test_unit
 IMGDIFF   := tools/imgdiff
@@ -36,7 +44,8 @@ IMGDIFF   := tools/imgdiff
 TEST_FRAMES := 120
 TEST_TIME   := 2.0
 
-.PHONY: all build bundle run demo demo-controls demo-events demo-menu demo-world demo-quest clean \
+.PHONY: all build bundle run demo demo-controls demo-events demo-menu demo-world demo-quest \
+        demo-explore demo-dungeon clean \
         build-wasm run-wasm \
         deploy \
         test test-unit test-wasm test-parity
@@ -82,6 +91,16 @@ demo-world: $(BIN)
 demo-quest: $(BIN)
 	CV_SCENE=src/levels/quest.json $(BIN)
 
+# Explore demo: a world to walk around in — hand-drawn ruins, roads, a village
+# and a pond set in endless procedural wilds. Top-down view (45°).
+# WASD/arrows move, Q/E turn the camera 90°, V (or space) switches view.
+demo-explore: $(BIN)
+	CV_SCENE=src/levels/explore.json CV_VIEW=topdown $(BIN)
+
+# The same world, starting in the dungeon-crawl view (third person, low camera).
+demo-dungeon: $(BIN)
+	CV_SCENE=src/levels/explore.json CV_VIEW=dungeon $(BIN)
+
 $(BIN): $(SRC) $(wildcard src/engine/*.h) $(wildcard src/game/*.h)
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) $(SDL2) $(GL_FLAGS) $(SRC) -o $@
@@ -109,7 +128,7 @@ run: bundle
 # WebAssembly
 # ---------------------------------------------------------------------------
 
-build-wasm: $(SRC) $(wildcard src/engine/*.h) $(wildcard src/game/*.h) web/pre.js
+build-wasm: $(SRC) $(wildcard src/engine/*.h) $(wildcard src/game/*.h) web/pre.js web/shell.html
 	@mkdir -p $(WASM_OUT)
 	bash -c '$(EMSDK_ENV) && emcc $(WASM_FLAGS) $(SRC) -o $(WASM_OUT)/stress.html'
 
@@ -156,7 +175,9 @@ test: build $(IMGDIFF)
 test-wasm: build-wasm
 	@mkdir -p $(TEST_DIR)
 	@echo "--- Web test ($(TEST_FRAMES) frames, t=$(TEST_TIME)) ---"
-	bash -c '$(EMSDK_ENV) && emrun --kill-exit --timeout 30 \
+	bash -c '$(EMSDK_ENV) && emrun --kill-exit --timeout 60 \
+	    --browser "$(CHROME)" \
+	    --browser_args="--user-data-dir=/tmp/cv-emrun-profile --no-first-run --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding" \
 	    "$(WASM_OUT)/stress.html?CV_TEST_FRAMES=$(TEST_FRAMES)&CV_FIXED_TIME=$(TEST_TIME)&CV_SCREENSHOT=1" \
 	    2>&1 | tee $(TEST_DIR)/web.log'
 	@if grep -q "CV_GLERROR" $(TEST_DIR)/web.log; then \

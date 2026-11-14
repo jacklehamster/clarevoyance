@@ -39,7 +39,8 @@ struct Instance {
     float rotation;     // yaw about world-up, radians (oriented quads)
     float pitch;        // pitch about the local right axis, radians
                         // (0 = upright wall, -pi/2 = flat floor tile)
-    float billboard;    // 1 = always face camera
+    float billboard;    // 0 = oriented quad, 1 = face the camera,
+                        // 2 = face the camera and stay above pos.y ("grounded")
 
     Vec4  anim;         // firstFrame, frameCount, fps, animStart
 
@@ -48,8 +49,17 @@ struct Instance {
 
     float sheet;        // sprite-sheet index = texture-array layer to sample
                         // (value returned by Renderer::loadSheet; default 0)
+
+    Vec2  offset;       // pivot offset in world units along the quad's own
+                        // right/up axes (camera right/up for billboards)
+    float xray;         // 1 = also draw as a silhouette where hidden
 };
 ```
+
+27 floats, uploaded as-is. Two of them deserve a word:
+
+- **`offset`** moves the quad within its own plane, away from the anchor point `pos`. `offset = {0, height/2}` stands a character on its feet — `pos` is then the point where it touches the ground, which is what the game layer wants to reason about (collision, labels, camera focus), and the sprite stays planted whatever angle the camera looks from. A row of glyphs that share one `pos` and differ only in `offset` forms a billboarded label that follows its owner by copying a single motion formula (`makeLabel`, `src/game/text.h`).
+- **`xray`** opts an instance into the silhouette pass described below.
 
 The GPU evolves each instance every vertex invocation:
 
@@ -67,7 +77,7 @@ A thrown projectile flying through an arc uploads its instance once. The GPU dra
 
 ## Rendering Pipeline
 
-### Two passes, one draw call each
+### Passes
 
 All sprites share a single unit quad (two triangles, six indices). The quad is drawn `N` times via `glDrawElementsInstanced`. Per-instance attributes are bound with `glVertexAttribDivisor(loc, 1)`.
 
@@ -79,6 +89,11 @@ Instances are partitioned by tint alpha into two buckets, each a packed array wi
 | 2 | **translucent** (`tint.a < 0.999`) | on | **off** | shim ghosts — blend over the scene without punching depth holes |
 
 Blending is enabled for both passes (as it always was — sprite edges stay identical), so opaque-only scenes render pixel-identically to the single-pass renderer. Two VAOs/VBOs is the WebGL2-portable way to issue two instance ranges: GLES 3.0 has no `baseInstance`, so offsetting into one shared buffer between draws is not an option. An upsert whose tint alpha crosses the threshold migrates the instance between buckets automatically (swap-remove bookkeeping per bucket, shared `id → (bucket, slot)` map).
+
+Two optional passes sit around those:
+
+- **Sky** (before pass 1, only when `WorldState::sky.enabled`): one full-screen triangle, no vertex buffer, depth test off. The fragment shader reconstructs each pixel's view ray from the camera basis and colours it by the ray's elevation (zenith → horizon → ground), so the horizon stays put as the camera pitches and turns. Arithmetic only — no `pow`/`exp` — to keep desktop and WebGL output identical. Scenes without a sky clear to the flat background colour exactly as before.
+- **X-ray silhouettes** (between passes 1 and 2, only when some opaque instance has `xray = 1`): the opaque bucket is drawn again with `glDepthFunc(GL_GREATER)` and depth writes off; the vertex shader throws every non-xray instance outside the clip volume, and the fragment shader outputs a flat pale wash masked by the sprite's alpha. The result: wherever the hero is hidden behind a wall, its outline shows through. Costs nothing when unused (the pass is skipped).
 
 **Future work:** the translucent pass is not depth-sorted per instance — shims sit at similar depths so ordering artifacts are negligible for now; add back-to-front sorting within the bucket if stacked translucents ever matter.
 
@@ -127,9 +142,10 @@ No extra draw calls per animation frame. No CPU involvement between uploads.
 
 ### Billboarding vs. oriented quads
 
-Controlled per instance by the `billboard` float flag:
+Controlled per instance by the `billboard` float:
 
 - **Billboard (`billboard = 1`):** quad is offset along camera right/up vectors (passed as uniforms). Always faces the camera; `rotation`/`pitch` are ignored.
+- **Grounded billboard (`billboard = 2`):** a billboard that never sinks below its own anchor height `pos.y`. Any vertex that would is slid toward the eye along its own view ray until it sits on that height: its position on screen is unchanged, only its depth moves in front of the floor. This is what lets a label hang *below* a character's feet and still be visible instead of buried in the ground. (Perspective cameras slide along the ray from the eye; orthographic ones along the view direction.)
 - **Oriented (`billboard = 0`):** the vertex shader builds the model basis `Ry(yaw) * Rx(pitch)` from `rotation` (yaw) and `pitch`. Pitch 0 is an upright quad (wall segments, placed objects); pitch −π/2 lies the quad flat facing +Y (floor tiles, decals). Roll is deliberately absent — tiles and walls don't need it, and it keeps the instance two floats instead of a quaternion. Builder: `makeQuad(pos, scale, yaw, pitch)`.
 
 ### Alpha cutout
@@ -145,10 +161,16 @@ The fragment shader discards fragments with `alpha < 0.05`, giving clean sprite 
 Full snapshot. Replaces everything in the renderer.
 
 ```cpp
+struct Sky {
+    bool enabled = false;
+    Vec3 zenith, horizon, ground;   // gradient stops, by view-ray elevation
+};
+
 struct WorldState {
     std::unordered_map<EntityId, Instance> instances;
     std::vector<Camera> cameras;
     int activeCamera = 0;
+    Sky sky;                        // optional backdrop (see Passes)
 };
 ```
 
@@ -187,6 +209,24 @@ Instance buffer re-upload happens at most once per bucket per frame, only when t
 `viewProjection()` returns a column-major `Mat4` passed directly to `glUniformMatrix4fv`. Camera `right()` and `trueUp()` vectors are extracted and passed as uniforms for billboarding.
 
 Multiple cameras can live in `WorldState`. `activeCamera` index selects which one renders. Switching cameras costs one uniform update — no re-upload.
+
+### The follow-camera rig — `src/engine/camera_rig.h`
+
+Scenes with a `"cameraRig"` block get a camera that follows an entity (the hero) from one of two views and blends between them:
+
+| View | Eye | Looks at | Feel |
+|------|-----|----------|------|
+| **top-down** | high and behind (as far back as up: 45°) | the hero | overworld, read the layout |
+| **dungeon** | low and close behind | a point ahead of the hero | third-person dungeon crawler |
+
+The rig's yaw is **locked to quarter turns** (hard constraint): it only rests facing north, east, south or west. A turn is a 0.35 s smoothstep sweep between two of those, and a view switch a 0.7 s blend of the two views' parameters — never a snap.
+
+The split of responsibilities:
+
+- **`RigState`** (facing, view, and where each transition started) lives in the **`SimState`**. It has to: movement is camera-relative, so the rig's facing is gameplay state and must replay identically. The sim changes it on the `camera_left` / `camera_right` / `camera_view` actions.
+- **Movement** uses `rigAxes()` — the exact integer forward/right axes of the *target* facing — so it is bit-exact however the turn is being animated on screen.
+- **`rigPose()` / `rigCamera()`** are pure functions of `(RigConfig, RigState, time, focus)`. The engine loop evaluates them once per rendered frame at the continuous render time and sends the camera as a `Diff` (uniforms only).
+- **Walls.** In the dungeon view a wall between the eye and the hero would hide the hero, so the loop asks the game layer how much of the eye–hero line is clear (`Terrain::sightClearance`) and passes that to `rigCamera` as `pull`: the eye slides in front of the wall, rising a little as it closes in. Pulling in is instant; easing back out is smoothed in the loop (render-only state, never fed back to the sim). The top-down view looks over the walls instead and relies on the x-ray silhouette.
 
 ---
 
@@ -290,16 +330,20 @@ src/engine/
   texture.h/.cpp    — TextureArray: one GL_TEXTURE_2D_ARRAY for all sprite
                       sheets, cells repacked per layer (GL_NEAREST, stb_image)
   camera.h          — Camera struct, viewProjection(), right(), trueUp()
+  camera_rig.h      — follow camera: RigConfig/RigState, top-down and dungeon
+                      views, eased quarter turns, rigPose()/rigCamera()
   instance.h        — Instance POD + makeBillboard/makeSprite/makeQuad/
-                      setAnimation/setMotion
-  world_state.h     — WorldState, Diff, EntityId
-  renderer.h/.cpp   — Renderer: owns VAO/VBOs/program/texture array,
+                      setAnimation/setMotion/motionAt
+  world_state.h     — WorldState (+ Sky), Diff, EntityId
+  renderer.h/.cpp   — Renderer: owns VAO/VBOs/programs/texture array,
                       init/loadSheet/applyState/applyDiff/render
+                      (sky, opaque, x-ray, translucent passes)
   sdl_input.h/.cpp  — buildInputFrame: SDL events → device-agnostic InputFrame
                       (the ONLY place SDL keyboard events meet game input)
   main.cpp          — entry point: fixed-timestep accumulator loop; stress-test
                       demo, or a data-driven scene via CV_SCENE=path (with
-                      once-per-second hot-reload on desktop)
+                      once-per-second hot-reload on desktop). Per frame it
+                      also streams terrain around the hero and aims the rig.
   screenshot.h/.cpp — captureFramebufferBase64, framebufferNonBlank (test helpers)
   third_party/
     stb_image.h       — vendored v2.30
@@ -308,26 +352,41 @@ src/engine/
 src/game/           — SDL-free; compiles without GL (see make test-unit)
   json.h            — minimal JSON parser for scene files (no external deps)
   scene.h/.cpp      — Scene (immutable after load): entities/cameras/events/
-                      bindings/attrs parsed from JSON, loadScene(), applyMovement
+                      bindings/attrs/labels/terrain/rig parsed from JSON, loadScene()
+  terrain.h/.cpp    — Terrain: authored tile map + procedural wilds as a pure
+                      function of (seed, x, z); collision and sight queries;
+                      TerrainStreamer (instances the cells around a focus point)
+  text.h/.cpp       — makeText (glyph quads in a row), makeLabel (billboarded
+                      glyphs under an entity's feet)
   events.h/.cpp     — updateEvents: data-driven trigger/condition/action rules → Diff
   input.h/.cpp      — InputFrame/Bindings/ResolvedActions, InputSource
                       (BindingsInputSource holds a COPY of the bindings)
-  sim.h/.cpp        — SIM_DT, SimClock, copyable SimState, stepSim (one tick)
+  sim.h/.cpp        — SIM_DT, SimClock, copyable SimState, stepSim (one tick):
+                      camera rig input, patrols, movement with collision, events
 
 src/levels/
-  *.json            — canonical scene files (demo, controls, menu)
+  *.json            — canonical scene files (explore, quest, world, demo,
+                      controls, menu)
 
 tests/
   *.cpp             — zero-dependency unit tests (make test-unit): json parser,
-                      event semantics, determinism replay, scene loading
+                      event semantics, determinism replay, scene loading, and
+                      the world (terrain, collision, rig, labels, patrols)
 
 tools/
   imgdiff.c         — native pixel-diff tool for desktop/web parity checks
 
 scripts/
   extract_shot.sh   — pulls base64 PNG from between CV_SHOT_BEGIN/CV_SHOT_END markers
+  gen_terrain.py    — draws art/terrain.png (ground tiles, walls, plants) with
+                      nothing but the Python standard library
+  gen_tiles.py      — draws art/tiles.png (quest/world demo tiles; needs Pillow)
+  gen_font.py       — draws art/font.png (bitmap font; needs Pillow)
 
 web/
+  shell.html        — the page the game runs in: full-window 16:9 canvas,
+                      per-scene controls reminder, link back to the demo list
+  landing.html      — the demo list (deployed as index.html)
   pre.js            — Emscripten preRun hook (URL params → ENV, kept for reference)
 ```
 
@@ -412,14 +471,18 @@ All test config is read via `getenv()` in C++. Platform differences are transpar
 | `CV_TEST_FRAMES=N` | Render N frames then exit 0. Unset → run forever. |
 | `CV_FIXED_TIME=T` | Pin the sim clock at `tick = round(T / SIM_DT)` and render at constant `t = T` every frame instead of wall clock. Makes output deterministic across runs and platforms. |
 | `CV_SCREENSHOT=1` | On the final test frame, capture the back buffer as a base64 PNG between `CV_SHOT_BEGIN` / `CV_SHOT_END` markers on stdout. |
+| `CV_VIEW=topdown\|dungeon` | Not a test key: overrides the view a scene's camera rig starts in (the two explore demo cards use it). |
 
 ### Unit tests — `make test-unit`
 
 `tests/*.cpp` + `src/game/*.cpp` compile into `build/test_unit` — pure CPU, no
 GL/SDL, no window. Covers the JSON parser, event trigger/condition/action
 semantics, the determinism replay (identical tick-command scripts under
-different frame batchings must be bit-identical), and loading every scene in
-`src/levels/`. Runs in CI before the compile gate.
+different frame batchings must be bit-identical), loading every scene in
+`src/levels/`, and the world: terrain generation is repeatable cell by cell,
+collision stops and slides, the rig turns in eased quarter steps, labels follow
+their owners, patrols and their shims stay in phase. Runs in CI before the
+compile gate.
 
 ### Screenshot capture — `src/engine/screenshot.{h,cpp}`
 

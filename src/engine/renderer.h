@@ -1,4 +1,4 @@
-// renderer.h — turns world state into two instanced draw calls.
+// renderer.h — turns world state into a handful of instanced draw calls.
 //
 // The renderer owns all GL objects: a shared unit-quad, per-bucket instance
 // VBOs, the shader program, and one GL_TEXTURE_2D_ARRAY holding every sprite
@@ -11,6 +11,11 @@
 // A shared id->slot map lets diffs upsert/remove individual entities without
 // rebuilding everything; an upsert that changes an instance's opacity class
 // migrates it between buckets automatically.
+//
+// Two optional extras ride the same data: a sky backdrop (WorldState::sky, one
+// full-screen triangle drawn first) and an x-ray silhouette pass (instances
+// flagged Instance::xray are re-drawn where they fail the depth test, so the
+// hero stays readable behind a wall).
 #pragma once
 
 #include <cstdint>
@@ -84,8 +89,13 @@ private:
     void remove(EntityId id);
     void insertInto(int bucket, EntityId id, const Instance& inst);
     void removeFromBucket(int bucket, size_t slot);
+    void renderSky(const Camera& cam, Vec3 camFwd, float ortho);
 
     GLuint program_ = 0;
+    GLuint skyProgram_ = 0;
+    GLuint skyVao_ = 0;
+    Sky sky_;
+    int xrayCount_ = 0;   // opaque instances with Instance::xray set
     GLuint quadVbo_ = 0;
     GLuint quadEbo_ = 0;
 

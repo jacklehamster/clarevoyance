@@ -15,7 +15,7 @@ Scene buildScene(Vec3 playerPos = {0, 0, 0}) {
     Scene s;
     s.initialState.instances[1] = makeBillboard(playerPos, {1, 1});
     s.nameToId["player"] = 1;
-    s.attrs[1] = EntityAttrs{true, 2.0f};
+    s.attrs[1] = makeAttrs(true, 2.0f);
 
     s.initialState.instances[2] = makeBillboard({10, 0, 0}, {1, 1});
     s.nameToId["mochi"] = 2;

@@ -1,0 +1,391 @@
+{
+  "version": 1,
+  "sheets": [
+    {"path": "art/penguin.png", "cols": 16, "rows": 1},
+    {"path": "art/terrain.png", "cols": 8, "rows": 4},
+    {"path": "art/font.png", "cols": 16, "rows": 6}
+  ],
+  "sky": {"zenith": [0.2, 0.42, 0.8], "horizon": [0.74, 0.86, 0.96], "ground": [0.3, 0.42, 0.26]},
+  "cameraRig": {
+    "follow": "hero@25,29",
+    "view": "topdown",
+    "facing": "north",
+    "topdown": {"back": 5.6, "height": 6.1, "lookAhead": 0.0, "targetHeight": 0.5, "fovY": 0.8727},
+    "dungeon": {"back": 2.7, "height": 1.35, "lookAhead": 2.5, "targetHeight": 0.75, "fovY": 1.2217}
+  },
+  "labelStyle": {"sheet": 2, "height": 0.22, "advance": 0.115, "drop": 0.02},
+  "controls": {
+    "bindings": {
+      "w": "move_north",
+      "s": "move_south",
+      "a": "move_west",
+      "d": "move_east",
+      "up": "move_north",
+      "down": "move_south",
+      "left": "move_west",
+      "right": "move_east",
+      "q": "camera_left",
+      "e": "camera_right",
+      "v": "camera_view",
+      "space": "camera_view"
+    }
+  },
+  "archetypes": {
+    "penguin": {
+      "scale": [0.9, 0.9],
+      "offset": [0, 0.32],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 3},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      }
+    },
+    "hero": {
+      "scale": [0.9, 0.9],
+      "offset": [0, 0.32],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 3},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "controlled": true,
+      "speed": 3.2,
+      "radius": 0.28,
+      "xray": true,
+      "autoAnim": true,
+      "anim": "idle",
+      "label": "HERO",
+      "labelTint": [1, 1, 1, 1]
+    },
+    "npc": {
+      "scale": [0.9, 0.9],
+      "offset": [0, 0.32],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 3},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "anim": "chat",
+      "solid": true,
+      "radius": 0.3,
+      "tint": [0.75, 1.0, 0.8, 1],
+      "label": "NPC",
+      "labelTint": [0.6, 1.0, 0.65, 1]
+    },
+    "npc_sleepy": {
+      "scale": [0.9, 0.9],
+      "offset": [0, 0.32],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 3},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "anim": "sleep",
+      "solid": true,
+      "radius": 0.3,
+      "tint": [0.75, 1.0, 0.8, 1],
+      "label": "NPC",
+      "labelTint": [0.6, 1.0, 0.65, 1]
+    },
+    "decor": {
+      "scale": [0.7, 0.7],
+      "offset": [0, 0.25],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 3},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "anim": "idle",
+      "solid": true,
+      "radius": 0.25,
+      "tint": [0.72, 0.6, 0.45, 1],
+      "label": "DECOR",
+      "labelTint": [0.8, 0.8, 0.8, 1]
+    },
+    "statue": {
+      "scale": [1.3, 1.3],
+      "offset": [0, 0.46],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 3},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "anim": "idle",
+      "solid": true,
+      "radius": 0.38,
+      "tint": [0.62, 0.64, 0.7, 1],
+      "label": "DECOR",
+      "labelTint": [0.8, 0.8, 0.8, 1]
+    },
+    "key": {
+      "scale": [0.5, 0.5],
+      "offset": [0, 0.18],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 3},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "anim": "idle",
+      "tint": [1.0, 0.86, 0.3, 1],
+      "label": "OBJECT",
+      "labelTint": [1.0, 0.88, 0.35, 1]
+    },
+    "herb": {
+      "scale": [0.45, 0.45],
+      "offset": [0, 0.16],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 3},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "anim": "idle",
+      "tint": [0.55, 1.0, 0.5, 1],
+      "label": "OBJECT",
+      "labelTint": [1.0, 0.88, 0.35, 1]
+    },
+    "chest": {
+      "scale": [0.75, 0.6],
+      "offset": [0, 0.21],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 3},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "anim": "idle",
+      "solid": true,
+      "radius": 0.3,
+      "tint": [0.85, 0.6, 0.3, 1],
+      "label": "OBJECT",
+      "labelTint": [1.0, 0.88, 0.35, 1]
+    },
+    "enemy_ew": {
+      "scale": [0.9, 0.9],
+      "offset": [0, 0.32],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 3},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "patrol": {"delta": [4, 0, 0], "speed": 1.3},
+      "anim": "walk",
+      "autoAnim": true,
+      "tint": [1.0, 0.5, 0.5, 1],
+      "label": "ENEMY",
+      "labelTint": [1.0, 0.45, 0.4, 1]
+    },
+    "enemy_ew_shim": {
+      "scale": [0.9, 0.9],
+      "offset": [0, 0.32],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 3},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "patrol": {"delta": [4, 0, 0], "speed": 1.3, "phase": 1.0},
+      "anim": "walk",
+      "autoAnim": true,
+      "tint": [0.55, 0.85, 1.0, 0.33]
+    },
+    "enemy_ns": {
+      "scale": [0.9, 0.9],
+      "offset": [0, 0.32],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 3},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "patrol": {"delta": [0, 0, 3], "speed": 1.1},
+      "anim": "walk",
+      "autoAnim": true,
+      "tint": [1.0, 0.5, 0.5, 1],
+      "label": "ENEMY",
+      "labelTint": [1.0, 0.45, 0.4, 1]
+    },
+    "enemy_ns_shim": {
+      "scale": [0.9, 0.9],
+      "offset": [0, 0.32],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 3},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "patrol": {"delta": [0, 0, 3], "speed": 1.1, "phase": 1.0},
+      "anim": "walk",
+      "autoAnim": true,
+      "tint": [0.55, 0.85, 1.0, 0.33]
+    },
+    "boss": {
+      "scale": [2.2, 2.2],
+      "offset": [0, 0.78],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 3},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "anim": "angry",
+      "solid": true,
+      "radius": 0.5,
+      "tint": [0.8, 0.35, 0.9, 1],
+      "label": "BOSS",
+      "labelTint": [0.95, 0.5, 1.0, 1]
+    }
+  },
+  "terrain": {
+    "sheet": 1,
+    "seed": 174,
+    "radius": 26,
+    "origin": [0, 0],
+    "wild": {
+      "scale": 12,
+      "biomes": [
+        {
+          "name": "dunes",
+          "upTo": 88,
+          "floor": [5, 5, 6],
+          "props": [
+            {"cell": 21, "perMille": 40, "scale": [1.1, 1.1], "solid": true, "radius": 0.25},
+            {"cell": 22, "perMille": 25, "scale": [0.8, 0.8], "solid": true, "radius": 0.3},
+            {"cell": 25, "perMille": 45, "scale": [0.8, 0.8]}
+          ]
+        },
+        {
+          "name": "meadow",
+          "upTo": 168,
+          "floor": [0, 1, 0, 1, 2],
+          "props": [
+            {"cell": 16, "perMille": 90, "scale": [0.5, 0.5]},
+            {"cell": 17, "perMille": 45, "scale": [0.6, 0.6]},
+            {"cell": 18, "perMille": 25, "scale": [0.9, 0.9], "solid": true, "radius": 0.3},
+            {"cell": 19, "perMille": 14, "scale": [2.2, 2.2], "solid": true, "radius": 0.25},
+            {"cell": 22, "perMille": 8, "scale": [0.8, 0.8], "solid": true, "radius": 0.3}
+          ]
+        },
+        {
+          "name": "forest",
+          "upTo": 256,
+          "floor": [3, 4, 3],
+          "props": [
+            {"cell": 20, "perMille": 110, "scale": [2.4, 2.4], "solid": true, "radius": 0.25},
+            {"cell": 19, "perMille": 50, "scale": [2.4, 2.4], "solid": true, "radius": 0.25},
+            {"cell": 24, "perMille": 110, "scale": [0.7, 0.7]},
+            {"cell": 23, "perMille": 35, "scale": [0.4, 0.4]},
+            {"cell": 18, "perMille": 30, "scale": [0.9, 0.9], "solid": true, "radius": 0.3}
+          ]
+        }
+      ]
+    },
+    "legend": {
+      "=": {"floor": 7},
+      ".": {"floor": 8},
+      "+": {"floor": 15},
+      "_": {"props": false},
+      "#": {"wall": 9, "wallBase": 26, "top": 10, "height": 2},
+      "h": {"wall": 11, "top": 12, "height": 1},
+      "~": {"floor": 13, "floorFrames": 2, "floorFps": 1.5, "solid": true},
+      "H": {"floor": 7, "spawn": "hero"},
+      "N": {"props": false, "spawn": "npc"},
+      "n": {"props": false, "spawn": "npc_sleepy"},
+      "d": {"props": false, "spawn": "decor"},
+      "D": {"floor": 8, "spawn": "statue"},
+      "K": {"floor": 8, "spawn": "key"},
+      "C": {"floor": 8, "spawn": "chest"},
+      "k": {"props": false, "spawn": "herb"},
+      "E": {"floor": 8, "spawn": ["enemy_ew", "enemy_ew_shim"]},
+      "S": {"floor": 8, "spawn": ["enemy_ns", "enemy_ns_shim"]},
+      "e": {"props": false, "spawn": ["enemy_ew", "enemy_ew_shim"]},
+      "B": {"floor": 8, "spawn": "boss"}
+    },
+    "rows": [
+      "                                                ",
+      "          ############################          ",
+      "          #......#.........#.........#          ",
+      "          #..K...#...D..D..#..D....D.#          ",
+      "          #......#.........#....B....#          ",
+      "          #....C.#.E.......#.........#          ",
+      "          #......#.........#.........#          ",
+      "          ###..#######..####.........#          ",
+      "          #................#####..####          ",
+      "          #.........#...#............#          ",
+      "          #.E.......#...#.S....#...#.#          ",
+      "          #..........................#          ",
+      "          ###.#####..##......####..###          ",
+      "          #.S...#.....#......#.......#          ",
+      "          #.....#.....#......#E......#          ",
+      "          #.....#..K..#......#....C..#          ",
+      "          #.....#.....#D....D#.......#          ",
+      "          ###############..###########          ",
+      " hhhhhhhhhhh             ==                     ",
+      " h_________h             ==                     ",
+      " h_d_____d_h             ==             ~~      ",
+      " h___N_____h  e____ k    ==n  e____   ~~~~~~    ",
+      " h_________h             ==          ~~~~~~~~   ",
+      " h_________h             ==         ~~~~~~~~~~  ",
+      " h___==============================+++++++++++==",
+      " h___==============================+++++++++++==",
+      " h_________h             ==         ~~~~~~~~~~  ",
+      " h____k____h             ==          ~~~~~~~~   ",
+      " h______N__h             ==   k       ~~~~~~    ",
+      " h_d_____d_h             H=             ~~      ",
+      " h_________h             ==                     ",
+      " hhhhhhhhhhh             ==                     ",
+      "                                                "
+    ]
+  },
+  "entities": []
+}

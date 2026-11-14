@@ -37,4 +37,14 @@ std::vector<Instance> makeText(const std::string& s, Vec3 pos,
                                 float charW, float charH,
                                 int fontSheet, Vec4 tint);
 
+// Build a billboarded label: one camera-facing glyph per character, all sharing
+// the single anchor point `anchor` and spread out through their pivot offsets,
+// centred horizontally and hanging `drop` below the anchor. Because every glyph
+// has the same position, a label follows its owner by copying one motion
+// formula. Glyphs are "grounded" billboards (BILLBOARD_GROUNDED): they stay
+// visible above the floor at the anchor's height.
+std::vector<Instance> makeLabel(const std::string& s, Vec3 anchor,
+                                 float glyphSize, float advance, float drop,
+                                 int fontSheet, Vec4 tint);
+
 } // namespace cv

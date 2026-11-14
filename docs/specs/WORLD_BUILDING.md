@@ -9,6 +9,21 @@ and [CLAUDE.md](../../CLAUDE.md).
 
 ---
 
+## Status
+
+Implemented (see [GAME_LAYER.md](../GAME_LAYER.md#world), "World"): floor and wall quads from a
+`terrain` scene block with an ASCII map and legend (reqs 1–7), multi-sheet rendering (8),
+deterministic collision against solid cells (9–10), and a streamer that instances the cells
+around the player (12–14, per cell rather than per chunk — a chunk is one cell).
+
+Went further than the spec: cells outside the authored map are **generated procedurally** from
+`hash(seed, x, z)`, so the world is endless and nothing about it is stored.
+
+Still open: non-solid gameplay surfaces such as speed-modifying water (req 11), and everything
+under "World structure and chunking" below that concerns multi-file worlds.
+
+---
+
 ## Purpose
 
 Scenes currently contain only character sprites floating over the clear color. The
