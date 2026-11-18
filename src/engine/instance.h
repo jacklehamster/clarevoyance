@@ -59,6 +59,13 @@ struct Instance {
     // X-ray: 1 = also draw this instance as a faint silhouette wherever it is
     // hidden behind other geometry (the hero behind a wall). 0 = off.
     float xray = 0.0f;
+
+    // Layer: 0 = the 3D world, seen through the active camera. 1 = the screen
+    // overlay (dialogue boxes, HUD): a flat layer drawn last, on top of the
+    // world, in fixed screen units — see OVERLAY_WIDTH / OVERLAY_HEIGHT. There,
+    // pos.xy is a position on screen and pos.z only orders what covers what
+    // (higher is in front).
+    float layer = 0.0f;
 };
 
 // Compile-time ABI guard: Instance is a binary contract with the GPU attribute
@@ -67,8 +74,18 @@ static_assert(std::is_standard_layout<Instance>::value, "Instance must be standa
 static_assert(sizeof(Vec2) == 8,  "Vec2 size changed — GPU attribute layout broken");
 static_assert(sizeof(Vec3) == 12, "Vec3 size changed — GPU attribute layout broken");
 static_assert(sizeof(Vec4) == 16, "Vec4 size changed — GPU attribute layout broken");
-static_assert(sizeof(Instance) == 27 * sizeof(float),
+static_assert(sizeof(Instance) == 28 * sizeof(float),
               "Instance size changed — update the GPU attribute layout in renderer.cpp");
+
+constexpr float LAYER_WORLD   = 0.0f;
+constexpr float LAYER_OVERLAY = 1.0f;
+
+// The overlay's coordinate system: the screen is always OVERLAY_HEIGHT units
+// tall with (0, 0) at the bottom-left of a OVERLAY_WIDTH-wide reference frame.
+// At the game's native 16:9 that frame is exactly the screen; on a wider or
+// narrower window it stays centred and the extra width extends past both ends.
+constexpr float OVERLAY_WIDTH  = 1280.0f;
+constexpr float OVERLAY_HEIGHT = 720.0f;
 
 constexpr float BILLBOARD_NONE     = 0.0f;
 constexpr float BILLBOARD_FACE     = 1.0f;

@@ -35,8 +35,9 @@ namespace cv {
 struct JsonValue;
 
 // Terrain instances take ids from this base upward — far above scene-authored
-// ids (1..) and runtime dialogue glyphs (1'000'000..), so they never collide.
-constexpr EntityId TERRAIN_ID_BASE = 2'000'000;
+// ids (1..) and everything the sim spawns at runtime (1'000'000.., a billion
+// ids of headroom for UI glyphs that come and go), so they never collide.
+constexpr EntityId TERRAIN_ID_BASE = 0x40000000u;
 
 // One plant/rock a biome may grow on a cell.
 struct PropRule {

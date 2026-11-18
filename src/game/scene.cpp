@@ -232,6 +232,58 @@ bool readEntity(const JsonValue& e, EntityAttrs& attrs, const Archetype* arch,
     return true;
 }
 
+double numOrBool(const JsonValue* v, double fallback);
+bool readCondition(const JsonValue& c, Condition& out,
+                   const std::string& ctx, std::string& error);
+
+// {"name": amount, ...} — flags to set, or items to give/take. Booleans are 0/1.
+bool readAmounts(const JsonValue* v, Amounts& out, const std::string& ctx, std::string& error) {
+    if (!v) return true;
+    if (!v->isObject()) return failCtx(error, ctx, "must be an object of name: number");
+    for (const auto& kv : v->obj) {
+        if (kv.second.type != JsonValue::Type::Number && kv.second.type != JsonValue::Type::Bool)
+            return failCtx(error, ctx + "." + kv.first, "must be a number or boolean");
+        out.emplace_back(kv.first, numOrBool(&kv.second, 1.0));
+    }
+    return true;
+}
+
+// One line of a conversation (see DialogueLine in scene.h).
+bool readDialogueLine(const JsonValue& l, const Scene& scene, DialogueLine& out,
+                      const std::string& ctx, std::string& error) {
+    if (!l.isObject()) return failCtx(error, ctx, "must be an object");
+    DialogueLine line;
+    if (const JsonValue* c = l.find("if"))
+        if (!readCondition(*c, line.condition, ctx + ".if", error)) return false;
+    if (const JsonValue* sp = l.find("speaker")) {
+        line.speaker = sp->string();
+        if (!scene.speakers.count(line.speaker))
+            return failCtx(error, ctx + ".speaker",
+                           "'" + line.speaker + "' is not an archetype");
+    }
+    if (const JsonValue* t = l.find("text")) line.text = t->string();
+    if (line.text.empty()) return failCtx(error, ctx, "missing 'text'");
+    if (!readAmounts(l.find("set"),  line.set,  ctx + ".set",  error)) return false;
+    if (!readAmounts(l.find("give"), line.give, ctx + ".give", error)) return false;
+    if (!readAmounts(l.find("take"), line.take, ctx + ".take", error)) return false;
+    if (const JsonValue* e = l.find("end")) line.end = e->boolean(false);
+    if (const JsonValue* choices = l.find("choices")) {
+        if (!choices->isArray() || choices->arr.empty())
+            return failCtx(error, ctx + ".choices", "must be a non-empty array");
+        for (size_t i = 0; i < choices->arr.size(); ++i) {
+            const JsonValue& c = choices->arr[i];
+            const std::string cctx = ctxIndex(ctx + ".choices", i);
+            DialogueChoice choice;
+            if (const JsonValue* t = c.find("text")) choice.text = t->string();
+            if (choice.text.empty()) return failCtx(error, cctx, "missing 'text'");
+            if (!readAmounts(c.find("set"), choice.set, cctx + ".set", error)) return false;
+            line.choices.push_back(std::move(choice));
+        }
+    }
+    out = std::move(line);
+    return true;
+}
+
 bool readRigView(const JsonValue* v, RigView& view, const std::string& ctx, std::string& error) {
     if (!v) return true;
     if (!v->isObject()) return failCtx(error, ctx, "must be an object");
@@ -280,6 +332,8 @@ bool readTrigger(const JsonValue& t, const Scene& scene, Trigger& out,
         else return failCtx(error, ctx, "unknown input edge '" + edge + "'");
     } else if (type == "start") {
         tr.type = Trigger::Type::Start;
+    } else if (type == "always") {
+        tr.type = Trigger::Type::Always;
     } else {
         return failCtx(error, ctx, "unknown trigger type '" + type + "'");
     }
@@ -318,10 +372,34 @@ bool readCondition(const JsonValue& c, Condition& out,
         out = std::move(cond);
         return true;
     }
-    if (!c.find("flag"))
-        return failCtx(error, ctx, "condition must have 'flag', 'all', or 'any'");
-    cond.kind  = Condition::Kind::Flag;
-    cond.flag  = c.find("flag")->string();
+    // Inventory shorthands: {"has": "key"} = at least one; {"lacks": "key"} = none.
+    if (const JsonValue* has = c.find("has")) {
+        cond.kind = Condition::Kind::Item;
+        cond.flag = has->string();
+        cond.op = Condition::Op::Ge;
+        cond.value = 1.0;
+        out = std::move(cond);
+        return true;
+    }
+    if (const JsonValue* lacks = c.find("lacks")) {
+        cond.kind = Condition::Kind::Item;
+        cond.flag = lacks->string();
+        cond.op = Condition::Op::Lt;
+        cond.value = 1.0;
+        out = std::move(cond);
+        return true;
+    }
+    // A comparison on a flag, or on an item count: {"item": "herb", "op": "ge", "value": 3}.
+    const JsonValue* subject = c.find("flag");
+    cond.kind = Condition::Kind::Flag;
+    if (!subject) {
+        subject = c.find("item");
+        cond.kind = Condition::Kind::Item;
+    }
+    if (!subject)
+        return failCtx(error, ctx,
+                       "condition must have 'flag', 'item', 'has', 'lacks', 'all', or 'any'");
+    cond.flag  = subject->string();
     cond.value = numOrBool(c.find("value"), 1.0);
     std::string op = c.find("op") ? c.find("op")->string() : "eq";
     if      (op == "eq") cond.op = Condition::Op::Eq;
@@ -384,6 +462,25 @@ bool readAction(const JsonValue& a, const Scene& scene, Action& out,
     } else if (type == "dialogue") {
         ac.type = Action::Type::Dialogue;
         ac.id   = a.find("id") ? a.find("id")->string() : "";
+    } else if (type == "talk") {
+        // Open a conversation; "entity" (optional) is who it is with.
+        ac.type = Action::Type::Talk;
+        ac.id   = a.find("id") ? a.find("id")->string() : "";
+        if (!scene.dialogues.count(ac.id))
+            return failCtx(error, ctx, "unknown dialogue '" + ac.id + "'");
+        if (const JsonValue* e = a.find("entity")) {
+            ac.entity = e->string();
+            if (!checkEntityRef(scene, ac.entity, "entity", ctx, error)) return false;
+        }
+    } else if (type == "toast") {
+        ac.type = Action::Type::Toast;
+        ac.id   = a.find("text") ? a.find("text")->string() : "";
+        if (ac.id.empty()) return failCtx(error, ctx, "missing 'text'");
+    } else if (type == "give") {
+        ac.type  = Action::Type::Give;
+        ac.flag  = a.find("item") ? a.find("item")->string() : "";
+        ac.value = a.find("count") ? a.find("count")->number(1.0) : 1.0;
+        if (ac.flag.empty()) return failCtx(error, ctx, "missing 'item'");
     } else {
         return failCtx(error, ctx, "unknown action type '" + type + "'");
     }
@@ -462,6 +559,50 @@ bool loadScene(const char* path, Scene& out, std::string& error) {
                 out.archetypes[kv.first] = readArchetype(kv.second);
                 archetypeJson[kv.first]  = &kv.second;
             }
+        }
+    }
+
+    // Speakers: every archetype can talk. Its face is its own sprite — the
+    // "chat" clip if it has one, else "idle", else its inline anim — and its
+    // name is "name", else its label, else the archetype's id.
+    for (const auto& kv : archetypeJson) {
+        const JsonValue& a = *kv.second;
+        Speaker sp;
+        sp.name = a.find("name") ? a.find("name")->string()
+                : a.find("label") ? a.find("label")->string() : kv.first;
+        if (const JsonValue* sh = a.find("sheet")) sp.sheet = static_cast<int>(sh->number(0));
+        if (!readVec4(a.find("tint"), sp.tint, "archetypes." + kv.first + ".tint", error))
+            return false;
+        const Archetype& arch = out.archetypes[kv.first];
+        auto clip = arch.clips.find("chat");
+        if (clip == arch.clips.end()) clip = arch.clips.find("idle");
+        if (clip != arch.clips.end()) {
+            sp.first = clip->second.first;
+            sp.count = clip->second.count;
+            sp.fps   = clip->second.fps;
+        } else if (const JsonValue* an = a.find("anim")) {
+            if (an->isObject() && an->find("first"))
+                sp.first = static_cast<int>(an->find("first")->number());
+        }
+        out.speakers[kv.first] = std::move(sp);
+    }
+
+    // Screen overlay: which sheets hold the window pieces and the font.
+    if (const JsonValue* ui = root.find("ui")) {
+        out.ui.enabled = true;
+        if (const JsonValue* v = ui->find("sheet")) out.ui.sheet = static_cast<int>(v->number(0));
+        if (const JsonValue* v = ui->find("font"))  out.ui.fontSheet = static_cast<int>(v->number(0));
+        const int n = static_cast<int>(out.sheets.size());
+        if (out.ui.sheet < 0 || out.ui.sheet >= n || out.ui.fontSheet < 0 || out.ui.fontSheet >= n)
+            return failCtx(error, "ui", "'sheet' and 'font' must be indices into 'sheets'");
+    }
+
+    // Items: display names for the inventory ({"herb": "Moonherb"} or {"herb": {"name": ...}}).
+    if (const JsonValue* items = root.find("items")) {
+        if (!items->isObject()) return failCtx(error, "items", "must be an object");
+        for (const auto& kv : items->obj) {
+            const JsonValue* name = kv.second.isObject() ? kv.second.find("name") : &kv.second;
+            out.itemNames[kv.first] = name ? name->string(kv.first) : kv.first;
         }
     }
 
@@ -547,6 +688,34 @@ bool loadScene(const char* path, Scene& out, std::string& error) {
         out.attrs[id] = attrs;
         if (attrs.patrol.enabled) out.patrolIds.push_back(id);
         if (attrs.solid)          out.solidIds.push_back(id);
+
+        // What walking up to it does: "talk" opens a conversation on the
+        // interact action; "pickup" puts it in the inventory on touch.
+        const JsonValue* talk = merged->find("talk");
+        const JsonValue* pickup = merged->find("pickup");
+        if (talk || pickup) {
+            Interactable what;
+            what.name = merged->find("name") ? merged->find("name")->string()
+                      : merged->find("label") ? merged->find("label")->string() : name;
+            if (talk) {
+                what.talk = talk->string();
+                out.talkIds.push_back(id);
+            }
+            if (pickup) {
+                // "pickup": "herb"  or  "pickup": {"item": "herb", "count": 3}
+                if (pickup->isObject()) {
+                    what.item = pickup->find("item") ? pickup->find("item")->string() : "";
+                    if (const JsonValue* c = pickup->find("count"))
+                        what.count = static_cast<int>(c->number(1));
+                } else {
+                    what.item = pickup->string();
+                }
+                if (what.item.empty()) return failCtx(error, ctx + ".pickup", "missing item id");
+                if (what.count < 1)    return failCtx(error, ctx + ".pickup.count", "must be at least 1");
+                out.pickupIds.push_back(id);
+            }
+            out.interactables[id] = std::move(what);
+        }
 
         // Label: billboarded glyphs under the feet, sharing the owner's motion.
         if (const JsonValue* lab = merged->find("label")) {
@@ -636,6 +805,35 @@ bool loadScene(const char* path, Scene& out, std::string& error) {
         if (!readVec3(sky->find("horizon"), s.horizon, "sky.horizon", error)) return false;
         if (!readVec3(sky->find("ground"),  s.ground,  "sky.ground",  error)) return false;
     }
+
+    // Conversations — after archetypes (speakers) and entities (who talks).
+    if (const JsonValue* dlgs = root.find("dialogues")) {
+        if (!dlgs->isObject()) return failCtx(error, "dialogues", "must be an object");
+        if (!out.ui.enabled)
+            return failCtx(error, "dialogues", "need a 'ui' block (the window and font sheets)");
+        for (const auto& kv : dlgs->obj) {
+            const std::string ctx = "dialogues." + kv.first;
+            if (!kv.second.isArray() || kv.second.arr.empty())
+                return failCtx(error, ctx, "must be a non-empty array of lines");
+            Dialogue dlg;
+            for (size_t i = 0; i < kv.second.arr.size(); ++i) {
+                DialogueLine line;
+                if (!readDialogueLine(kv.second.arr[i], out, line, ctxIndex(ctx, i), error))
+                    return false;
+                dlg.lines.push_back(std::move(line));
+            }
+            out.dialogues[kv.first] = std::move(dlg);
+        }
+    }
+    for (EntityId id : out.talkIds) {
+        const Interactable& what = out.interactables[id];
+        if (!out.dialogues.count(what.talk))
+            return failCtx(error, "entity '" + what.name + "'",
+                           "'talk' references unknown dialogue '" + what.talk + "'");
+    }
+    if (!out.pickupIds.empty() && !out.ui.enabled)
+        std::fprintf(stderr, "warning: %s: pickups without a 'ui' block — the inventory "
+                             "will not be shown\n", path);
 
     // Events — parsed after entities so triggers/actions can validate every
     // entity reference against the scene.

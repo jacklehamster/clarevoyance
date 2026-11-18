@@ -12,6 +12,10 @@
 // rebuilding everything; an upsert that changes an instance's opacity class
 // migrates it between buckets automatically.
 //
+// A third bucket, OVERLAY, holds the screen layer (Instance::layer = 1):
+// dialogue boxes and HUD, drawn last with a fixed orthographic projection and
+// no depth test, back to front by pos.z.
+//
 // Two optional extras ride the same data: a sky backdrop (WorldState::sky, one
 // full-screen triangle drawn first) and an x-ray silhouette pass (instances
 // flagged Instance::xray are re-drawn where they fail the depth test, so the
@@ -68,7 +72,8 @@ private:
     // Bucket indices + the alpha threshold that separates them.
     static const int OPAQUE = 0;
     static const int TRANSLUCENT = 1;
-    static const int BUCKET_COUNT = 2;
+    static const int OVERLAY = 2;        // screen layer (Instance::layer = 1)
+    static const int BUCKET_COUNT = 3;
     static constexpr float OPAQUE_ALPHA_MIN = 0.999f;
 
     // One packed instance array + VAO/VBO per bucket (shared quad geometry).
@@ -81,6 +86,7 @@ private:
     };
 
     static int bucketFor(const Instance& inst) {
+        if (inst.layer > 0.5f) return OVERLAY;
         return inst.tint.w < OPAQUE_ALPHA_MIN ? TRANSLUCENT : OPAQUE;
     }
 
@@ -90,6 +96,7 @@ private:
     void insertInto(int bucket, EntityId id, const Instance& inst);
     void removeFromBucket(int bucket, size_t slot);
     void renderSky(const Camera& cam, Vec3 camFwd, float ortho);
+    void renderOverlay(float aspect);
 
     GLuint program_ = 0;
     GLuint skyProgram_ = 0;

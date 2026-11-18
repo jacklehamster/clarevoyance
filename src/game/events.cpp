@@ -1,5 +1,6 @@
 // events.cpp — event/condition/action evaluation over (const Scene, SimState).
 #include "events.h"
+#include "dialogue.h"
 #include "text.h"
 
 #include <cstdio>
@@ -12,14 +13,21 @@ static double flagValue(const SimState& state, const std::string& name) {
     return it == state.flags.end() ? 0.0 : it->second;
 }
 
-// Recursive: a condition is a flag comparison or an all/any composition.
-static bool conditionPasses(const SimState& state, const Condition& c) {
+static double itemCount(const SimState& state, const std::string& item) {
+    auto it = state.inventory.find(item);
+    return it == state.inventory.end() ? 0.0 : static_cast<double>(it->second);
+}
+
+// Recursive: a condition is a flag/item comparison or an all/any composition.
+bool conditionPasses(const SimState& state, const Condition& c) {
     switch (c.kind) {
         case Condition::Kind::None:
             return true;
 
-        case Condition::Kind::Flag: {
-            const double v = flagValue(state, c.flag);
+        case Condition::Kind::Flag:
+        case Condition::Kind::Item: {
+            const double v = c.kind == Condition::Kind::Flag
+                ? flagValue(state, c.flag) : itemCount(state, c.flag);
             switch (c.op) {
                 case Condition::Op::Eq: return v == c.value;
                 case Condition::Op::Ne: return v != c.value;
@@ -149,6 +157,18 @@ static void runActions(const Scene& scene, SimState& state, float now,
                 state.attrs[id].controlled = (a.value != 0.0);
                 break;
             }
+
+            case Action::Type::Talk:
+                startDialogue(scene, state, a.id, scene.idOf(a.entity), out);
+                break;
+
+            case Action::Type::Toast:
+                showToast(scene, state, a.id, out);
+                break;
+
+            case Action::Type::Give:
+                giveItem(scene, state, a.flag, static_cast<int>(a.value), out);
+                break;
         }
     }
 }
@@ -178,6 +198,10 @@ void updateEvents(const Scene& scene,
         switch (e.trigger.type) {
             case Trigger::Type::Start:
                 triggered = isFirstStep;
+                break;
+
+            case Trigger::Type::Always:
+                triggered = true;   // the condition (checked above) is the trigger
                 break;
 
             case Trigger::Type::Proximity: {

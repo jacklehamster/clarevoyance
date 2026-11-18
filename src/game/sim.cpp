@@ -1,5 +1,6 @@
 // sim.cpp — fixed-tick simulation step over an immutable Scene + mutable SimState.
 #include "sim.h"
+#include "dialogue.h"
 #include "events.h"
 
 #include <cmath>
@@ -256,7 +257,13 @@ void stepSim(const Scene& scene, SimState& state,
     const float  now     = static_cast<float>(simTime);
     const bool firstStep = !state.started;
 
-    stepRig(scene, state, actions, simTime, out);
+    // A conversation takes over the controls: its keys drive the dialogue, and
+    // nothing reaches the camera or the player's legs (the world keeps going).
+    const bool talking = state.talk.active;
+    const ResolvedActions none;
+    const ResolvedActions& worldActions = talking ? none : actions;
+
+    stepRig(scene, state, worldActions, simTime, out);
     stepPatrols(scene, state, firstStep, out);
 
     // Entity positions at this tick, from the analytic motion model.
@@ -265,12 +272,17 @@ void stepSim(const Scene& scene, SimState& state,
     for (const auto& kv : state.entities)
         positions[kv.first] = motionAt(kv.second, now);
 
-    stepMovement(scene, state, actions, now, positions, out);
+    stepMovement(scene, state, worldActions, now, positions, out);
+
+    if (talking) stepDialogue(scene, state, actions, out);
+    else         stepInteractions(scene, state, actions, positions, out);
 
     // Events (including input triggers) run against the resolved actions.
     // updateEvents mutates state (flags, fired, entities, attrs) directly and
     // appends the renderer-facing upserts/removals to `out`.
-    updateEvents(scene, state, simTime, positions, actions, out);
+    updateEvents(scene, state, simTime, positions, worldActions, out);
+
+    refreshHud(scene, state, positions, out);
 
     state.clock.tick++;
 

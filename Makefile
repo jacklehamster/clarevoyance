@@ -45,7 +45,7 @@ TEST_FRAMES := 120
 TEST_TIME   := 2.0
 
 .PHONY: all build bundle run demo demo-controls demo-events demo-menu demo-world demo-quest \
-        demo-explore demo-dungeon clean \
+        demo-explore demo-dungeon demo-village clean \
         build-wasm run-wasm \
         deploy \
         test test-unit test-wasm test-parity
@@ -100,6 +100,13 @@ demo-explore: $(BIN)
 # The same world, starting in the dungeon-crawl view (third person, low camera).
 demo-dungeon: $(BIN)
 	CV_SCENE=src/levels/explore.json CV_VIEW=dungeon $(BIN)
+
+# Village demo: talk to the villagers (old-school dialogue box with the
+# speaker's face, choices that set variables, lines filtered on variables and
+# on what you carry) and pick things up. A small quest from start to finish.
+# WASD/arrows move, SPACE/ENTER talk and confirm, Q/E turn the camera, V view.
+demo-village: $(BIN)
+	CV_SCENE=src/levels/village.json $(BIN)
 
 $(BIN): $(SRC) $(wildcard src/engine/*.h) $(wildcard src/game/*.h)
 	@mkdir -p build

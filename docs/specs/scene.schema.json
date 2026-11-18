@@ -228,6 +228,56 @@
         }
       },
       "additionalProperties": false
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "sheet": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index of art/ui.png in 'sheets' (window frame pieces)."
+        },
+        "font": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index of the font sheet in 'sheets'."
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "description": "The screen overlay's sheets. Required for dialogues."
+    },
+    "items": {
+      "type": "object",
+      "description": "Item id -> display name (a string, or {\"name\": ...}).",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "dialogues": {
+      "type": "object",
+      "description": "Dialogue id -> a flat list of lines, read top to bottom; lines whose 'if' fails are skipped. Choices set variables that later lines filter on, which is how a linear list plays as a dialogue tree.",
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "$ref": "#/definitions/dialogueLine"
+        }
+      }
     }
   },
   "required": [
@@ -472,6 +522,38 @@
         "labelTint": {
           "$ref": "#/definitions/vec4",
           "description": "RGBA multiplier for the label glyphs (default white)."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name: the dialogue name plate and the 'Talk to ...' hint."
+        },
+        "talk": {
+          "type": "string",
+          "description": "Dialogue id opened by the interact action when the player stands within reach."
+        },
+        "pickup": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "item": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "item"
+              ],
+              "additionalProperties": false
+            }
+          ],
+          "description": "Collected by walking into it: the item id (or {item, count}) added to the inventory."
         }
       }
     },
@@ -575,11 +657,24 @@
             "action"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "always"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "description": "Fires whenever the event's condition holds (with once: true, the first time it does)."
         }
       ]
     },
     "condition": {
-      "description": "A flag comparison, or a recursive all/any composition. Flags are numeric: JSON booleans are 0/1; a flag never set reads 0.",
+      "description": "A comparison on a flag (variable) or on an item count, an inventory shorthand, or a recursive all/any composition. Flags are numeric: JSON booleans are 0/1; a flag never set reads 0. Items never picked up count 0. Used by events and by dialogue-line filters.",
       "oneOf": [
         {
           "type": "object",
@@ -640,6 +735,61 @@
             "any"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "item": {
+              "type": "string",
+              "description": "Item id."
+            },
+            "value": {
+              "type": "number",
+              "default": 1
+            },
+            "op": {
+              "enum": [
+                "eq",
+                "ne",
+                "lt",
+                "le",
+                "gt",
+                "ge"
+              ],
+              "default": "eq"
+            }
+          },
+          "required": [
+            "item"
+          ],
+          "additionalProperties": false,
+          "description": "Compare how many of an item the player carries."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "has": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "has"
+          ],
+          "additionalProperties": false,
+          "description": "The player carries at least one of this item."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "lacks": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "lacks"
+          ],
+          "additionalProperties": false,
+          "description": "The player carries none of this item."
         }
       ]
     },
@@ -812,6 +962,66 @@
             "entity"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "talk"
+            },
+            "id": {
+              "type": "string",
+              "description": "Dialogue id."
+            },
+            "entity": {
+              "type": "string",
+              "description": "Optional: who the conversation is with (plays its chat clip)."
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ],
+          "additionalProperties": false,
+          "description": "Open a conversation."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "toast"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "text"
+          ],
+          "additionalProperties": false,
+          "description": "Flash a short message at the top of the screen."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "give"
+            },
+            "item": {
+              "type": "string"
+            },
+            "count": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          "required": [
+            "type",
+            "item"
+          ],
+          "additionalProperties": false,
+          "description": "Add to the inventory (a negative count takes away)."
         }
       ]
     },
@@ -1002,6 +1212,75 @@
         "floor"
       ],
       "additionalProperties": false
+    },
+    "amounts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "number",
+          "boolean"
+        ]
+      },
+      "description": "name -> amount: variables to set, or items to give/take."
+    },
+    "dialogueLine": {
+      "type": "object",
+      "properties": {
+        "if": {
+          "$ref": "#/definitions/condition",
+          "description": "Filter: the line is skipped unless this passes."
+        },
+        "speaker": {
+          "type": "string",
+          "description": "Archetype name: its sprite is the face in the badge, its 'name' the name plate. Omit for narration."
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "choices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "set": {
+                "$ref": "#/definitions/amounts"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Offered under the text; picking one sets variables that later lines filter on."
+        },
+        "set": {
+          "$ref": "#/definitions/amounts",
+          "description": "Variables set when the line comes up."
+        },
+        "give": {
+          "$ref": "#/definitions/amounts",
+          "description": "Items handed to the player when the line comes up."
+        },
+        "take": {
+          "$ref": "#/definitions/amounts",
+          "description": "Items taken from the player when the line comes up."
+        },
+        "end": {
+          "type": "boolean",
+          "description": "Close the conversation after this line."
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false,
+      "description": "One line of a conversation."
     }
   }
 }

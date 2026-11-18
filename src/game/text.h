@@ -47,4 +47,25 @@ std::vector<Instance> makeLabel(const std::string& s, Vec3 anchor,
                                  float glyphSize, float advance, float drop,
                                  int fontSheet, Vec4 tint);
 
+// --- Proportional text for the screen overlay ---------------------------------
+
+// Width of `s` on one line, set in glyph cells of `size` with each letter's own
+// advance (font_metrics.h).
+float textWidth(const std::string& s, float size);
+
+struct TextBlock {
+    std::vector<Instance> glyphs;   // in reading order; spaces produce no glyph
+    int   lines = 0;                // how many lines the text took
+    float width = 0.0f;             // widest line
+};
+
+// Lay `s` out as overlay text (Instance::layer = LAYER_OVERLAY): proportional
+// spacing, wrapped at word boundaries to `maxWidth`, starting with its top-left
+// corner at (x, yTop) and stepping down `lineHeight` per line. '\n' forces a
+// line break. `z` orders it among other overlay instances. Because the glyphs
+// come back in reading order, revealing the first N is a typewriter effect.
+TextBlock makeTextBlock(const std::string& s, float x, float yTop, float size,
+                        float maxWidth, float lineHeight, float z,
+                        int fontSheet, Vec4 tint);
+
 } // namespace cv

@@ -320,8 +320,21 @@ live at https://clare.dobuki.net (landing page with demo cards).
   silhouettes (the hero stays readable behind a wall), translucent (shims)
 - Per-instance `tint`, pivot `offset` (stand a sprite on its feet; billboarded labels), and
   "grounded" billboards that never sink into the floor
-- **Explore demo** (`src/levels/explore.json`, `make demo-explore` / `make demo-dungeon`): the
-  flagship — a hand-drawn core (walled ruins, roads, a hedged village, a pond) set in endless
+- **Village demo** (`src/levels/village.json`, `make demo-village`): the flagship — talk to the
+  villagers and collect things, as one small quest (herbs → key, coins → lantern, guard →
+  gate → crown). SPACE talks. The whole quest is data in the scene file
+- Conversations (`src/game/dialogue.*`): old-school window with the speaker's face in a badge
+  and text typed out. A dialogue is a **flat list of lines**; each line may have an `if`
+  filter over variables and the inventory, and may offer `choices` that set variables — which
+  is how a linear list plays as a dialogue tree. Lines can `set` variables and `give`/`take`
+  items; the window closes after the last passing line
+- Objects: entities with a `pickup` are collected by walking into them; the inventory
+  (`item → count`) is in the SimState, shown on the HUD, and readable from any condition
+  (`has`, `lacks`, `item` + `op`)
+- Screen overlay: `Instance::layer = 1` puts an instance on a flat 1280×720 layer drawn last —
+  dialogue window, portrait, HUD and text are all ordinary instances built by the game layer
+- **Explore demo** (`src/levels/explore.json`, `make demo-explore` / `make demo-dungeon`): a
+  hand-drawn core (walled ruins, roads, a hedged village, a pond) set in endless
   procedural wilds, walkable in two views: **top-down at 45°** and a **third-person dungeon
   crawl**. Q/E turn the camera 90°, V switches view. No interactions yet — it is a furnished
   world to walk around in
@@ -338,7 +351,8 @@ live at https://clare.dobuki.net (landing page with demo cards).
   one-second-ahead shim
 - Data-driven scenes (`src/levels/*.json`): entities, cameras, events
   (trigger/condition/action), archetypes with named clips, flags/conditions, key bindings
-- Bitmap-font text (`src/game/text.h`, `scripts/gen_font.py` → `art/font.png`)
+- Bitmap-font text (`src/game/text.h`): `scripts/gen_font.py` → `art/font.png` +
+  `src/game/font_metrics.h` (proportional widths). `scripts/gen_ui.py` → `art/ui.png`
 - Quest demo (`src/levels/quest.json`, `make demo-quest`): 3 keys, a counter-gated door, a
   patrolling enemy with a shim ghost, and a win room — the event system as a small game
 - Scene hot-reload on desktop: edit the JSON while `make demo` runs and it reloads
@@ -346,10 +360,10 @@ live at https://clare.dobuki.net (landing page with demo cards).
 - Cross-platform: desktop (OpenGL 3.3 Core) and browser (WebGL 2), built with
   `-ffp-contract=off` so both compute the same floats
 
-**Make targets:** `build`, `run`, `demo` (SCENE=…), `demo-explore`, `demo-dungeon`,
+**Make targets:** `build`, `run`, `demo` (SCENE=…), `demo-village`, `demo-explore`, `demo-dungeon`,
 `demo-quest`, `demo-world`, `demo-events`, `demo-controls`, `demo-menu`, `build-wasm`,
 `run-wasm`, `deploy`, `test`, `test-unit`, `test-wasm`, `test-parity`, `clean`.
 
-**Next up:** interactions in the explore world (pick up OBJECTs, talk to NPCs, enemies that
-hurt), real sprites to replace the penguins, then see `docs/specs/` — scene coordinator,
+**Next up:** enemies that hurt (health, the shim as a real dodge mechanic), using items on
+things, real sprites to replace the penguins, then see `docs/specs/` — scene coordinator,
 in-engine map editor, and the general shim lookahead (fork the sim N ticks ahead).

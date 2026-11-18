@@ -37,6 +37,10 @@ constexpr float RIG_MIN_PULL = 0.12f;
 // backed against a wall is seen from above the head rather than from inside it.
 constexpr float RIG_PULL_LIFT = 0.95f;
 
+// While a dialogue window covers the bottom of the screen, the dungeon view
+// aims this much lower, which lifts the hero clear of the window.
+constexpr float RIG_TALK_DROP = 0.6f;
+
 // One view = where the eye sits relative to the focus, and what it looks at.
 struct RigView {
     float back = 7.0f;          // horizontal distance behind the focus
@@ -156,8 +160,9 @@ inline RigPose rigPose(const RigConfig& cfg, const RigState& s, double t, Vec3 f
 
 // Build the camera for a pose. `pull` in (0, 1] slides the eye along the line
 // toward the pivot — 1 is the ideal position, smaller values bring it in front
-// of a wall that would otherwise hide the hero.
-inline Camera rigCamera(const RigPose& p, float pull) {
+// of a wall that would otherwise hide the hero. `drop` lowers the aim point
+// (tilting the view down), in world units.
+inline Camera rigCamera(const RigPose& p, float pull, float drop = 0.0f) {
     if (pull < RIG_MIN_PULL) pull = RIG_MIN_PULL;
     if (pull > 1.0f) pull = 1.0f;
     Camera cam;
@@ -166,7 +171,7 @@ inline Camera rigCamera(const RigPose& p, float pull) {
     cam.position = p.pivot + (p.eye - p.pivot) * pull;
     cam.position.y += (1.0f - pull) * RIG_PULL_LIFT;
     cam.target = {p.pivot.x + p.forward.x * p.view.lookAhead,
-                  p.pivot.y,
+                  p.pivot.y - drop,
                   p.pivot.z + p.forward.z * p.view.lookAhead};
     return cam;
 }

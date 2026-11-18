@@ -12,6 +12,7 @@ void test_scene_load();
 void test_text();
 void test_quest();
 void test_world();
+void test_dialogue();
 
 int main() {
     test_json();
@@ -22,6 +23,7 @@ int main() {
     test_text();
     test_quest();
     test_world();
+    test_dialogue();
 
     std::printf("%s: %d checks, %d failures\n",
                 g_failures == 0 ? "OK" : "FAILED", g_checks, g_failures);

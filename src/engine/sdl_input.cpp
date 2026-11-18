@@ -7,8 +7,8 @@
 namespace cv {
 
 // Map an SDL key event to the device-agnostic lowercase key name the input
-// layer uses for bindings. Letters/digits pass through lowercased; arrows and
-// space get stable names. Returns "" for keys we don't expose.
+// layer uses for bindings. Letters/digits pass through lowercased; arrows,
+// space, enter and tab get stable names. Returns "" for keys we don't expose.
 static std::string keyName(const SDL_Keysym& k) {
     switch (k.sym) {
         case SDLK_UP:    return "up";
@@ -16,6 +16,9 @@ static std::string keyName(const SDL_Keysym& k) {
         case SDLK_LEFT:  return "left";
         case SDLK_RIGHT: return "right";
         case SDLK_SPACE: return "space";
+        case SDLK_RETURN:
+        case SDLK_KP_ENTER: return "enter";
+        case SDLK_TAB:   return "tab";
         default: break;
     }
     std::string name = SDL_GetKeyName(k.sym);  // e.g. "W", "Escape"

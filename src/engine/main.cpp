@@ -160,6 +160,7 @@ struct LoopContext {
     Vec3        focus = {0, 0, 0};   // what the camera/terrain follow; kept if the entity vanishes
     float       camPull = 1.0f;      // smoothed camera distance fraction (see rigCamera)
     bool        camPullValid = false;
+    float       camDrop = 0.0f;      // smoothed downward tilt while a dialogue is open
     int         viewOverride = -1;   // CV_VIEW: RIG_TOPDOWN / RIG_DUNGEON, or -1
     std::string sceneName = {};      // file name shown in the window title
 };
@@ -196,8 +197,14 @@ static void updateWorldView(LoopContext* ctx, float t, float frameDt) {
             ctx->camPull += (want - ctx->camPull)
                           * (1.0f - std::exp(-CAM_RELAX_RATE * frameDt));
         }
+        // A dialogue window covers the bottom of the screen: in the dungeon
+        // view, tilt down a little so the hero stands above it.
+        const float wantDrop = ctx->sim->talk.active
+            ? RIG_TALK_DROP * rigBlend(ctx->sim->rig, t) : 0.0f;
+        ctx->camDrop += (wantDrop - ctx->camDrop)
+                      * (1.0f - std::exp(-CAM_RELAX_RATE * frameDt));
         diff.replaceCameras  = true;
-        diff.cameras         = {rigCamera(pose, ctx->camPull)};
+        diff.cameras         = {rigCamera(pose, ctx->camPull, ctx->camDrop)};
         diff.setActiveCamera = true;
         diff.activeCamera    = 0;
     }
@@ -225,6 +232,7 @@ static void startScene(LoopContext* ctx) {
     ctx->prevInput = InputFrame{};
     ctx->pending   = InputFrame{};
     ctx->camPullValid = false;
+    ctx->camDrop = 0.0f;
     ctx->total = static_cast<int>(scene.initialState.instances.size());
 }
 

@@ -65,7 +65,7 @@ inline EntityAttrs makeAttrs(bool controlled, float speed) {
 // Pure data parsed from the scene file; evaluated by the EventSystem.
 
 struct Trigger {
-    enum class Type { Start, Proximity, Input };
+    enum class Type { Start, Proximity, Input, Always };  // Always: whenever the condition holds
     enum class Edge { Pressed, Released, Held };   // input: which edge fires
     Type type = Type::Start;
     std::string entity;     // proximity: the moving entity (by data-file name)
@@ -76,24 +76,28 @@ struct Trigger {
     Edge edge = Edge::Pressed;  // input: fire on pressed / released / held
 };
 
-// A condition is a small recursive tree: either a single flag comparison
-// (flags[flag] <op> value — booleans are 0/1, missing flags read 0) or a
+// A condition is a small recursive tree: either a single comparison — a flag
+// (flags[flag] <op> value; booleans are 0/1, missing flags read 0) or an item
+// count (inventory[item] <op> value; items never picked up count 0) — or a
 // composition of children: "all" (logical AND) / "any" (logical OR).
 struct Condition {
-    enum class Kind { None, Flag, All, Any };  // None → always passes
+    enum class Kind { None, Flag, Item, All, Any };  // None → always passes
     enum class Op   { Eq, Ne, Lt, Le, Gt, Ge };
     Kind kind = Kind::None;
 
-    std::string flag;       // Flag: flag name
-    double value = 1.0;     // Flag: comparison operand (JSON bools become 0/1)
-    Op op = Op::Eq;         // Flag: comparison operator (default equality)
+    std::string flag;       // Flag: flag name. Item: item id
+    double value = 1.0;     // comparison operand (JSON bools become 0/1)
+    Op op = Op::Eq;         // comparison operator (default equality)
 
     std::vector<Condition> children;  // All / Any: sub-conditions
 };
 
 struct Action {
     enum class Type { Dialogue, SetFlag, AddFlag, SetAnim, SetMotion, Remove,
-                      ToggleControlled, SetControlled };
+                      ToggleControlled, SetControlled,
+                      Talk,    // open a conversation (id = dialogue id)
+                      Toast,   // flash a short message on screen (id = the text)
+                      Give };  // add `value` of item `flag` to the inventory (negative takes)
     Type type = Type::Dialogue;
 
     std::string id;         // dialogue: line id
@@ -117,6 +121,62 @@ struct Event {
     Condition condition;
     std::vector<Action> actions;
     bool once = true;       // fire at most once (fired markers live in SimState)
+};
+
+// --- Conversations -------------------------------------------------------------
+// A dialogue is a flat LIST of lines, read top to bottom. Each line may carry a
+// filter ("if"): a line whose filter fails is simply skipped. A line may offer
+// choices; picking one sets variables, and later lines filter on them. That is
+// the whole trick — a conversation that branches like a tree, authored as a
+// straight list. When the last line that passes has been read, the box closes.
+
+// name → amount pairs: flags to set, or items to give/take.
+using Amounts = std::vector<std::pair<std::string, double>>;
+
+struct DialogueChoice {
+    std::string text;
+    Amounts set;            // flags set when this choice is picked
+};
+
+struct DialogueLine {
+    Condition condition;    // "if": show this line only when it passes
+    std::string speaker;    // archetype whose face and name appear; "" = narration
+    std::string text;
+    std::vector<DialogueChoice> choices;   // empty = a plain line
+    Amounts set;            // flags set when the line comes up
+    Amounts give;           // items handed to the player when the line comes up
+    Amounts take;           // items taken from the player
+    bool end = false;       // close the conversation after this line
+};
+
+struct Dialogue {
+    std::vector<DialogueLine> lines;
+};
+
+// Who is talking: the face in the badge and the name on the plate. Built from
+// an archetype (its sheet, tint, and "chat" clip — or "idle" — as the portrait).
+struct Speaker {
+    std::string name;
+    int   sheet = 0;
+    int   first = 0;
+    int   count = 1;
+    float fps   = 0.0f;
+    Vec4  tint  = {1, 1, 1, 1};
+};
+
+// What walking up to an entity does. Static scene data, keyed by entity id.
+struct Interactable {
+    std::string talk;       // dialogue id opened by the interact action ("" = none)
+    std::string item;       // item id picked up on touch ("" = none)
+    int count = 1;          // how many of `item` this pickup is worth
+    std::string name;       // display name (the hint: "Talk to <name>")
+};
+
+// The screen overlay's look: which sheets carry the window pieces and the font.
+struct UiStyle {
+    bool enabled = false;
+    int  sheet = 0;         // art/ui.png (see scripts/gen_ui.py for the cells)
+    int  fontSheet = 0;     // art/font.png
 };
 
 // --- Archetypes and named animation clips ------------------------------------
@@ -195,6 +255,21 @@ struct Scene {
     // sim visits them in the same order on every platform.
     std::vector<EntityId> patrolIds;
     std::vector<EntityId> solidIds;
+
+    // Conversations, items and the screen overlay (see dialogue.h).
+    UiStyle ui;
+    std::unordered_map<std::string, Dialogue> dialogues;     // id → lines
+    std::unordered_map<std::string, Speaker>  speakers;      // archetype → face + name
+    std::unordered_map<std::string, std::string> itemNames;  // item id → display name
+    std::unordered_map<EntityId, Interactable> interactables;
+    std::vector<EntityId> talkIds;     // entities with a dialogue, ascending
+    std::vector<EntityId> pickupIds;   // entities that are picked up, ascending
+
+    // Display name of an item (its id when the scene doesn't name it).
+    const std::string& itemName(const std::string& id) const {
+        auto it = itemNames.find(id);
+        return it == itemNames.end() ? id : it->second;
+    }
 
     // Optional world: tile terrain (authored map + procedural wilds) and the
     // follow-camera rig. `rigFollow` is the entity the rig keeps on screen.

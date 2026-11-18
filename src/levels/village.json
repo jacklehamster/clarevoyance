@@ -1,0 +1,589 @@
+{
+  "version": 1,
+  "sheets": [
+    {"path": "art/penguin.png", "cols": 16, "rows": 1},
+    {"path": "art/terrain.png", "cols": 8, "rows": 4},
+    {"path": "art/font.png", "cols": 16, "rows": 6},
+    {"path": "art/ui.png", "cols": 8, "rows": 2}
+  ],
+  "ui": {"sheet": 3, "font": 2},
+  "sky": {"zenith": [0.2, 0.42, 0.8], "horizon": [0.74, 0.86, 0.96], "ground": [0.3, 0.42, 0.26]},
+  "cameraRig": {
+    "follow": "hero@18,22",
+    "view": "topdown",
+    "facing": "north",
+    "topdown": {"back": 5.6, "height": 6.1, "lookAhead": 0.0, "targetHeight": 0.5, "fovY": 0.8727},
+    "dungeon": {"back": 2.7, "height": 1.35, "lookAhead": 2.5, "targetHeight": 0.75, "fovY": 1.2217}
+  },
+  "labelStyle": {"sheet": 2, "height": 0.22, "advance": 0.115, "drop": 0.02},
+  "controls": {
+    "bindings": {
+      "w": "move_north",
+      "s": "move_south",
+      "a": "move_west",
+      "d": "move_east",
+      "up": "move_north",
+      "down": "move_south",
+      "left": "move_west",
+      "right": "move_east",
+      "q": "camera_left",
+      "e": "camera_right",
+      "v": "camera_view",
+      "space": "interact",
+      "enter": "interact"
+    }
+  },
+  "items": {
+    "herb": "Moonherb",
+    "coin": "Coin",
+    "key": "Ruins key",
+    "lantern": "Lantern",
+    "crown": "Lost crown"
+  },
+  "archetypes": {
+    "hero": {
+      "scale": [0.9, 0.9],
+      "offset": [0, 0.32],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 5},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "name": "Clare",
+      "controlled": true,
+      "speed": 3.2,
+      "radius": 0.28,
+      "xray": true,
+      "autoAnim": true,
+      "anim": "idle",
+      "label": "HERO",
+      "labelTint": [1, 1, 1, 1]
+    },
+    "elder": {
+      "scale": [1.0, 1.0],
+      "offset": [0, 0.355],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 5},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "name": "Elder Pim",
+      "talk": "elder",
+      "anim": "idle",
+      "solid": true,
+      "tint": [0.8, 0.95, 1.0, 1],
+      "label": "NPC",
+      "labelTint": [0.6, 1.0, 0.65, 1]
+    },
+    "merchant": {
+      "scale": [0.9, 0.9],
+      "offset": [0, 0.32],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 5},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "name": "Nina",
+      "talk": "merchant",
+      "anim": "idle",
+      "solid": true,
+      "tint": [1.0, 0.8, 0.55, 1],
+      "label": "NPC",
+      "labelTint": [0.6, 1.0, 0.65, 1]
+    },
+    "guard": {
+      "scale": [1.1, 1.1],
+      "offset": [0, 0.39],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 5},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "name": "Bram",
+      "talk": "guard",
+      "anim": "angry",
+      "solid": true,
+      "tint": [0.7, 0.75, 0.9, 1],
+      "label": "NPC",
+      "labelTint": [0.6, 1.0, 0.65, 1]
+    },
+    "sleeper": {
+      "scale": [0.9, 0.9],
+      "offset": [0, 0.32],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 9, "count": 2, "fps": 1},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "name": "Old Tuck",
+      "talk": "sleeper",
+      "anim": "sleep",
+      "solid": true,
+      "tint": [0.85, 0.85, 0.7, 1],
+      "label": "NPC",
+      "labelTint": [0.6, 1.0, 0.65, 1]
+    },
+    "gate": {
+      "scale": [1.5, 1.5],
+      "offset": [0, 0.53],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 5},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "name": "Gate",
+      "anim": "angry",
+      "solid": true,
+      "radius": 0.5,
+      "tint": [0.6, 0.4, 0.25, 1],
+      "label": "DOOR",
+      "labelTint": [0.9, 0.7, 0.5, 1]
+    },
+    "herb": {
+      "scale": [0.45, 0.45],
+      "offset": [0, 0.16],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 5},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "pickup": "herb",
+      "anim": "idle",
+      "tint": [0.55, 1.0, 0.5, 1],
+      "label": "OBJECT",
+      "labelTint": [1.0, 0.88, 0.35, 1]
+    },
+    "coin": {
+      "scale": [0.4, 0.4],
+      "offset": [0, 0.14],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 5},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "pickup": "coin",
+      "anim": "idle",
+      "tint": [1.0, 0.85, 0.2, 1],
+      "label": "OBJECT",
+      "labelTint": [1.0, 0.88, 0.35, 1]
+    },
+    "chest": {
+      "scale": [0.8, 0.65],
+      "offset": [0, 0.23],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 5},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "pickup": "crown",
+      "anim": "idle",
+      "tint": [1.0, 0.75, 0.3, 1],
+      "label": "OBJECT",
+      "labelTint": [1.0, 0.88, 0.35, 1]
+    },
+    "statue": {
+      "scale": [1.3, 1.3],
+      "offset": [0, 0.46],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 5},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "anim": "idle",
+      "solid": true,
+      "radius": 0.38,
+      "tint": [0.62, 0.64, 0.7, 1],
+      "label": "DECOR",
+      "labelTint": [0.8, 0.8, 0.8, 1]
+    },
+    "crate": {
+      "scale": [0.7, 0.6],
+      "offset": [0, 0.21],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 5},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "anim": "idle",
+      "solid": true,
+      "radius": 0.28,
+      "tint": [0.72, 0.55, 0.38, 1],
+      "label": "DECOR",
+      "labelTint": [0.8, 0.8, 0.8, 1]
+    },
+    "enemy": {
+      "scale": [0.9, 0.9],
+      "offset": [0, 0.32],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 5},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "anim": "walk",
+      "autoAnim": true,
+      "tint": [1.0, 0.5, 0.5, 1],
+      "label": "ENEMY",
+      "labelTint": [1.0, 0.45, 0.4, 1],
+      "patrol": {"delta": [8, 0, 0], "speed": 1.4}
+    },
+    "enemy_shim": {
+      "scale": [0.9, 0.9],
+      "offset": [0, 0.32],
+      "billboard": true,
+      "sheet": 0,
+      "clips": {
+        "idle": {"first": 7, "count": 1, "fps": 0},
+        "walk": {"first": 0, "count": 5, "fps": 10},
+        "chat": {"first": 4, "count": 2, "fps": 5},
+        "angry": {"first": 8, "count": 1, "fps": 0},
+        "sleep": {"first": 9, "count": 2, "fps": 1}
+      },
+      "anim": "walk",
+      "autoAnim": true,
+      "tint": [0.55, 0.85, 1.0, 0.33],
+      "patrol": {"delta": [8, 0, 0], "speed": 1.4, "phase": 1.0}
+    }
+  },
+  "terrain": {
+    "sheet": 1,
+    "seed": 174,
+    "radius": 26,
+    "origin": [0, 0],
+    "wild": {
+      "scale": 12,
+      "biomes": [
+        {
+          "name": "dunes",
+          "upTo": 88,
+          "floor": [5, 5, 6],
+          "props": [
+            {"cell": 21, "perMille": 40, "scale": [1.1, 1.1], "solid": true, "radius": 0.25},
+            {"cell": 22, "perMille": 25, "scale": [0.8, 0.8], "solid": true, "radius": 0.3},
+            {"cell": 25, "perMille": 45, "scale": [0.8, 0.8]}
+          ]
+        },
+        {
+          "name": "meadow",
+          "upTo": 168,
+          "floor": [0, 1, 0, 1, 2],
+          "props": [
+            {"cell": 16, "perMille": 90, "scale": [0.5, 0.5]},
+            {"cell": 17, "perMille": 45, "scale": [0.6, 0.6]},
+            {"cell": 18, "perMille": 25, "scale": [0.9, 0.9], "solid": true, "radius": 0.3},
+            {"cell": 19, "perMille": 14, "scale": [2.2, 2.2], "solid": true, "radius": 0.25},
+            {"cell": 22, "perMille": 8, "scale": [0.8, 0.8], "solid": true, "radius": 0.3}
+          ]
+        },
+        {
+          "name": "forest",
+          "upTo": 256,
+          "floor": [3, 4, 3],
+          "props": [
+            {"cell": 20, "perMille": 110, "scale": [2.4, 2.4], "solid": true, "radius": 0.25},
+            {"cell": 19, "perMille": 50, "scale": [2.4, 2.4], "solid": true, "radius": 0.25},
+            {"cell": 24, "perMille": 110, "scale": [0.7, 0.7]},
+            {"cell": 23, "perMille": 35, "scale": [0.4, 0.4]},
+            {"cell": 18, "perMille": 30, "scale": [0.9, 0.9], "solid": true, "radius": 0.3}
+          ]
+        }
+      ]
+    },
+    "legend": {
+      "=": {"floor": 7},
+      ".": {"floor": 8},
+      "_": {"props": false},
+      "#": {"wall": 9, "wallBase": 26, "top": 10, "height": 2},
+      "b": {"wall": 11, "top": 12, "height": 1},
+      "~": {"floor": 13, "floorFrames": 2, "floorFps": 1.5, "solid": true},
+      "H": {"floor": 7, "spawn": "hero"},
+      "L": {"props": false, "spawn": "elder"},
+      "M": {"props": false, "spawn": "merchant"},
+      "G": {"props": false, "spawn": "guard"},
+      "Z": {"props": false, "spawn": "sleeper"},
+      "g": {"floor": 8, "spawn": "gate"},
+      "h": {"props": false, "spawn": "herb"},
+      "c": {"props": false, "spawn": "coin"},
+      "X": {"floor": 8, "spawn": "chest"},
+      "D": {"floor": 8, "spawn": "statue"},
+      "s": {"props": false, "spawn": "crate"},
+      "E": {"floor": 8, "spawn": ["enemy", "enemy_shim"]}
+    },
+    "rows": [
+      "                                     ",
+      "            #############            ",
+      "            #.D.......D.#            ",
+      "            #.....X.....#            ",
+      "            #..#.....#..#            ",
+      "            #...........#    ~~~~~   ",
+      "            #..#.....#..#   ~~~~~~~  ",
+      "            #.E.........#   ~~~~~~~  ",
+      "            #...........#   ~~~~~~~  ",
+      "            ######g######   ~~~~~~~  ",
+      "                  =          ~~~~~   ",
+      "                  =G                 ",
+      "       h          =                  ",
+      "           bbbbb__=__bbbbb           ",
+      "           b______=______b  h        ",
+      "           b______=___M__b           ",
+      "           ____L__=_s__s__           ",
+      "          ==================  c      ",
+      "           _______=_______           ",
+      "         c _______=_______           ",
+      "           __Z____=_______           ",
+      "           _______=_______     h     ",
+      "     h            H     c            ",
+      "                  =                  ",
+      "                  =                  ",
+      "                  =                  ",
+      "                                     "
+    ]
+  },
+  "dialogues": {
+    "intro": [
+      {"text": "Pim's Rest: a few penguins, a pond, and ruins nobody is allowed into."},
+      {"speaker": "hero", "text": "Someone here must know what is behind that gate."}
+    ],
+    "elder": [
+      {
+        "if": {"has": "crown"},
+        "speaker": "elder",
+        "text": "The lost crown! So the old stories were true..."
+      },
+      {"if": {"has": "crown"}, "speaker": "hero", "text": "It was just sitting there. In a chest."},
+      {
+        "if": {"has": "crown"},
+        "speaker": "elder",
+        "end": true,
+        "text": "Keep it safe, Clare. Something tells me this is only the beginning."
+      },
+      {
+        "if": {"flag": "herb_quest", "value": 2},
+        "speaker": "elder",
+        "end": true,
+        "text": "The ruins are north, past Bram. Mind the patrol inside."
+      },
+      {
+        "if": {"all": [{"flag": "herb_quest", "value": 1}, {"item": "herb", "op": "ge", "value": 3}]},
+        "speaker": "elder",
+        "text": "Three moonherbs! My knees thank you already.",
+        "take": {"herb": 3},
+        "set": {"elder_paying": 1}
+      },
+      {
+        "if": {"all": [{"flag": "elder_paying", "value": 1}, {"flag": "greedy", "value": 1}]},
+        "speaker": "elder",
+        "end": true,
+        "text": "You asked what was in it for you. Here: the key to the old ruins. Kindness would have earned you the same.",
+        "give": {"key": 1},
+        "set": {"herb_quest": 2, "elder_paying": 0}
+      },
+      {
+        "if": {"flag": "elder_paying", "value": 1},
+        "speaker": "elder",
+        "end": true,
+        "text": "Take this key to the old ruins. It is no use to an old penguin.",
+        "give": {"key": 1},
+        "set": {"herb_quest": 2, "elder_paying": 0}
+      },
+      {
+        "if": {"flag": "herb_quest", "value": 1},
+        "speaker": "elder",
+        "end": true,
+        "text": "Still looking? Moonherbs like open ground, out past the hedges. I need three."
+      },
+      {
+        "if": {"flag": "met_elder", "value": 0},
+        "speaker": "elder",
+        "set": {"met_elder": 1},
+        "text": "Oh! A traveller. I am Pim, elder of this village, such as it is."
+      },
+      {
+        "speaker": "elder",
+        "text": "My knees ache something fierce. Would you gather three moonherbs for me?",
+        "choices": [
+          {"text": "Of course.", "set": {"herb_quest": 1}},
+          {"text": "What is in it for me?", "set": {"herb_quest": 1, "greedy": 1}},
+          {"text": "Not now.", "set": {"elder_later": 1}}
+        ]
+      },
+      {
+        "if": {"flag": "elder_later", "value": 1},
+        "speaker": "elder",
+        "end": true,
+        "set": {"elder_later": 0},
+        "text": "No matter. I am not going anywhere."
+      },
+      {
+        "if": {"flag": "greedy", "value": 1},
+        "speaker": "elder",
+        "end": true,
+        "text": "Hmph. Bring them and you will see."
+      },
+      {"speaker": "elder", "end": true, "text": "Bless you. They grow in the meadows around the village."}
+    ],
+    "merchant": [
+      {
+        "if": {"flag": "bought_lantern", "value": 1},
+        "speaker": "merchant",
+        "end": true,
+        "text": "Mind the lantern oil. No refunds!"
+      },
+      {"speaker": "merchant", "text": "Lanterns! Finest wicks this side of the pond. Two coins."},
+      {
+        "if": {"item": "coin", "op": "ge", "value": 2},
+        "speaker": "hero",
+        "text": "Two coins...",
+        "choices": [
+          {"text": "Buy a lantern (2 coins).", "set": {"buying": 1}},
+          {"text": "Just looking.", "set": {"buying": 0}}
+        ]
+      },
+      {
+        "if": {"flag": "buying", "value": 1},
+        "speaker": "merchant",
+        "end": true,
+        "text": "A pleasure doing business. It never goes out. Mostly.",
+        "take": {"coin": 2},
+        "give": {"lantern": 1},
+        "set": {"bought_lantern": 1, "buying": 0}
+      },
+      {
+        "if": {"item": "coin", "op": "ge", "value": 2},
+        "speaker": "merchant",
+        "end": true,
+        "text": "Come back when you need light."
+      },
+      {"speaker": "hero", "text": "I do not have two coins."},
+      {"speaker": "merchant", "end": true, "text": "Then look around! Penguins drop coins everywhere."}
+    ],
+    "guard": [
+      {
+        "if": {"flag": "gate_open", "value": 1},
+        "speaker": "guard",
+        "end": true,
+        "text": "Go on in. And do not touch anything. ...You are going to touch everything."
+      },
+      {"speaker": "guard", "text": "Halt. The old ruins are sealed, by order of the elder."},
+      {
+        "if": {"all": [{"has": "key"}, {"has": "lantern"}]},
+        "speaker": "hero",
+        "text": "I have the elder's key. And a lantern."
+      },
+      {
+        "if": {"all": [{"has": "key"}, {"has": "lantern"}]},
+        "speaker": "guard",
+        "end": true,
+        "text": "Key, lantern... fine. In you go.",
+        "set": {"gate_open": 1}
+      },
+      {
+        "if": {"has": "key"},
+        "speaker": "guard",
+        "end": true,
+        "text": "A key, good. But it is pitch dark in there: no lantern, no entry. Nina sells them."
+      },
+      {
+        "if": {"has": "lantern"},
+        "speaker": "guard",
+        "end": true,
+        "text": "Nice lantern. You still need the elder's key."
+      },
+      {
+        "speaker": "guard",
+        "text": "Anything else?",
+        "choices": [
+          {"text": "What is in there?", "set": {"guard_ask": 1}},
+          {"text": "Who are you?", "set": {"guard_ask": 2}},
+          {"text": "Never mind.", "set": {"guard_ask": 0}}
+        ]
+      },
+      {
+        "if": {"flag": "guard_ask", "value": 1},
+        "speaker": "guard",
+        "end": true,
+        "text": "Old stones, older secrets. They say a crown sleeps in a chest. I say: rats."
+      },
+      {
+        "if": {"flag": "guard_ask", "value": 2},
+        "speaker": "guard",
+        "end": true,
+        "text": "Bram. I guard this gate. It is a very good gate."
+      }
+    ],
+    "sleeper": [
+      {
+        "if": {"has": "lantern"},
+        "speaker": "sleeper",
+        "end": true,
+        "text": "Agh! Turn that light off! Some of us are sleeping!"
+      },
+      {"speaker": "sleeper", "text": "Zzz... five more winters..."},
+      {"speaker": "hero", "text": "(Fast asleep.)"}
+    ],
+    "found_crown": [{"text": "A crown, heavier than it looks. The elder will want to see this."}]
+  },
+  "entities": [],
+  "events": [
+    {"trigger": {"type": "start"}, "actions": [{"type": "talk", "id": "intro"}]},
+    {
+      "trigger": {"type": "always"},
+      "condition": {"flag": "gate_open", "value": 1},
+      "once": true,
+      "actions": [{"type": "remove", "entity": "gate@18,9"}, {"type": "toast", "text": "The gate grinds open."}]
+    },
+    {
+      "trigger": {"type": "always"},
+      "condition": {"has": "crown"},
+      "once": true,
+      "actions": [{"type": "talk", "id": "found_crown"}]
+    }
+  ]
+}

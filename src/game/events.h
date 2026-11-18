@@ -25,6 +25,10 @@ namespace cv {
 // and it's tick-driven so the expiry stays as deterministic as everything else.
 constexpr int DIALOGUE_TEXT_TICKS = 180;
 
+// Does a condition hold right now? Flags that were never set read 0; items
+// never picked up count 0. Shared by events and dialogue-line filters.
+bool conditionPasses(const SimState& state, const Condition& c);
+
 // Evaluate all scene events against the given entity positions (keyed by id)
 // at sim time `now`, with the abstract input actions resolved for this tick.
 // Mutates `state` (flags, fired markers, entities, attrs), appends renderer

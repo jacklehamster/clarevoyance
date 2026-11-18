@@ -1,5 +1,6 @@
 #include "renderer.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef> // offsetof
 #include <SDL.h>
@@ -28,7 +29,7 @@ layout(location = 8) in float iBillboard;
 layout(location = 9) in vec4 iAnim;    // firstFrame, frameCount, fps, animStart
 layout(location = 10) in vec4 iTint;   // RGBA multiplier (1,1,1,1 = opaque)
 layout(location = 11) in float iSheet; // texture-array layer (sheet index)
-layout(location = 12) in vec3 iPivot;  // xy = pivot offset (world units), z = xray flag
+layout(location = 12) in vec4 iPivot;  // xy = pivot offset (world units), z = xray flag, w = layer
 
 const int MAX_SHEETS = 16;             // keep in sync with Renderer::MAX_SHEETS
 
@@ -260,7 +261,7 @@ bool Renderer::init() {
         attrib(9, 4, offsetof(Instance, anim));
         attrib(10, 4, offsetof(Instance, tint));
         attrib(11, 1, offsetof(Instance, sheet));
-        attrib(12, 3, offsetof(Instance, offset));    // vec3: (offset.xy, xray)
+        attrib(12, 4, offsetof(Instance, offset));    // vec4: (offset.xy, xray, layer)
 
         glBindVertexArray(0);
     }
@@ -394,6 +395,21 @@ void Renderer::remove(EntityId id) {
 }
 
 void Renderer::uploadBucket(Bucket& b) {
+    // The overlay has no depth test: what covers what is the draw order, so
+    // its instances go up sorted back to front by pos.z. (A sorted copy — the
+    // packed array and its slot map stay as they are.)
+    if (&b == &buckets_[OVERLAY]) {
+        std::vector<Instance> sorted = b.instances;
+        std::stable_sort(sorted.begin(), sorted.end(),
+                         [](const Instance& x, const Instance& y) { return x.pos.z < y.pos.z; });
+        glBindBuffer(GL_ARRAY_BUFFER, b.vbo);
+        glBufferData(GL_ARRAY_BUFFER,
+                     static_cast<GLsizeiptr>(sorted.size() * sizeof(Instance)),
+                     sorted.empty() ? nullptr : sorted.data(), GL_DYNAMIC_DRAW);
+        b.dirty = false;
+        return;
+    }
+
     glBindBuffer(GL_ARRAY_BUFFER, b.vbo);
     // Whole-buffer re-upload. Simple and plenty fast at our instance counts;
     // switch to ranged glBufferSubData only if profiling ever asks for it.
@@ -433,7 +449,8 @@ void Renderer::render(float time) {
     if (sky_.enabled) renderSky(*cam, camFwd, ortho);
 
     if (buckets_[OPAQUE].instances.empty() &&
-        buckets_[TRANSLUCENT].instances.empty())
+        buckets_[TRANSLUCENT].instances.empty() &&
+        buckets_[OVERLAY].instances.empty())
         return;
 
     glUseProgram(program_);
@@ -497,7 +514,32 @@ void Renderer::render(float time) {
         glDepthMask(GL_TRUE);  // restore: glClear needs the depth mask on
     }
 
+    // Pass 3 — the screen overlay, on top of everything.
+    if (!buckets_[OVERLAY].instances.empty()) renderOverlay(cam->aspect);
+
     glBindVertexArray(0);
+}
+
+// The overlay reuses the sprite program with a fixed orthographic "camera":
+// OVERLAY_HEIGHT units tall, the OVERLAY_WIDTH reference frame centred, looking
+// straight down -Z. No depth test — the bucket is uploaded back to front.
+void Renderer::renderOverlay(float aspect) {
+    const float halfW = OVERLAY_HEIGHT * 0.5f * (aspect > 0.0f ? aspect : 1.0f);
+    const float midX  = OVERLAY_WIDTH * 0.5f;
+    setUniform(program_, "uViewProj",
+               ortho(midX - halfW, midX + halfW, 0.0f, OVERLAY_HEIGHT, -1000.0f, 1000.0f));
+    setUniform(program_, "uCamRight", Vec3{1, 0, 0});
+    setUniform(program_, "uCamUp", Vec3{0, 1, 0});
+    setUniform(program_, "uCamPos", Vec3{0, 0, 1000});
+    setUniform(program_, "uCamFwd", Vec3{0, 0, -1});
+    setUniform(program_, "uOrtho", 1.0f);
+
+    glDisable(GL_DEPTH_TEST);
+    glBindVertexArray(buckets_[OVERLAY].vao);
+    glDrawElementsInstanced(
+        GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr,
+        static_cast<GLsizei>(buckets_[OVERLAY].instances.size()));
+    glEnable(GL_DEPTH_TEST);
 }
 
 void Renderer::renderSky(const Camera& cam, Vec3 camFwd, float ortho) {

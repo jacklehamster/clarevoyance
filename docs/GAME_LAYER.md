@@ -468,6 +468,7 @@ layer or feature so a regression is easy to localize:
 
 | Demo | Make target | Scene | Proves |
 |------|-------------|-------|--------|
+| **Village** (flagship) | `make demo-village` | `village.json` | Talking and collecting: the dialogue window with the speaker's face, choices that set variables, lines filtered on variables and on the inventory, pickups, and a small quest that uses all of it. See "The village demo". |
 | **Explore — top-down** | `make demo-explore` | `explore.json` | A world to walk around in, seen from above at 45°: terrain (authored map + procedural wilds), collision, the follow camera, labels, patrols with shims, sky. See "The explore demo". |
 | **Explore — dungeon crawl** | `make demo-dungeon` | `explore.json` (`CV_VIEW=dungeon`) | The same world from the third-person dungeon view. |
 | **Quest** | `make demo-quest` | `quest.json` | The event system as one small playable game: archetypes + named clips, flags/conditions gating a door, bitmap-font text, a patrolling enemy driven by `set_motion` + proximity, and a real shim preview (see below). |
@@ -476,6 +477,22 @@ layer or feature so a regression is easy to localize:
 | Menu | `make demo-menu` | `menu.json` | Flags + `input` triggers driving pure animation-state UI (no 3D movement). |
 | Events | `make demo-events` | `demo.json` | The original proximity → dialogue → `set_motion` chain (Mochi). |
 | Stress Test | `make demo` (no `SCENE=`) / `stress.html` | — (code-built) | Raw throughput: 900 instanced billboards, GPU-driven animation, no scene/event system involved. |
+
+### The village demo
+
+`src/levels/village.json`: a crossroads village beside sealed ruins. The quest, start to
+finish: the **elder** wants three moonherbs (say yes, ask what's in it for you, or put it
+off — he remembers which); bring them and he hands over the ruins key. **Nina** sells a
+lantern for two coins, which lie around the village. **Bram** guards the gate and wants to
+see both key and lantern. Inside the ruins, a chest holds the lost crown — and the elder has
+something to say about that. **Old Tuck** sleeps through all of it unless you are carrying a
+lantern.
+
+Controls: WASD / arrows walk, **SPACE** or ENTER talks and moves a conversation on,
+up / down pick a choice, Q / E turn the camera, V switches view (it plays in both).
+
+Nothing in it is special-cased in code: the whole quest is the `dialogues`, `items` and three
+`events` in the scene file.
 
 ### The explore demo
 
@@ -662,6 +679,108 @@ translucent twin the same patrol with `"phase": 1.0` and it is, at every instant
 original will be one second from now. That is the explore demo's enemy shims — a real
 lookahead, for the price of one field. (The general forward-simulation lookahead is still to
 come: `docs/specs/SHIM_SYSTEM.md`.)
+
+### Talking — `"dialogues"` (`src/game/dialogue.h`)
+
+A conversation is shown the way old RPGs did it: a window along the bottom of the screen,
+the speaker's face in a badge at its left with their name above, the line typed out a few
+letters at a time. The `interact` action finishes the line, then moves on. While the window
+is open the player does not move and the camera does not turn; the world carries on.
+
+A dialogue is a **flat list of lines, read top to bottom**:
+
+```json
+"dialogues": {
+  "elder": [
+    {"if": {"flag": "herb_quest", "value": 2}, "speaker": "elder", "end": true,
+     "text": "The ruins are north, past Bram."},
+
+    {"if": {"all": [{"flag": "herb_quest"}, {"item": "herb", "op": "ge", "value": 3}]},
+     "speaker": "elder", "text": "Three moonherbs! My knees thank you already.",
+     "take": {"herb": 3}, "give": {"key": 1}, "set": {"herb_quest": 2}, "end": true},
+
+    {"speaker": "elder", "text": "Would you gather three moonherbs for me?",
+     "choices": [
+       {"text": "Of course.",            "set": {"herb_quest": 1}},
+       {"text": "What is in it for me?", "set": {"herb_quest": 1, "greedy": 1}},
+       {"text": "Not now.",              "set": {"elder_later": 1}} ]},
+    {"if": {"flag": "elder_later"}, "speaker": "elder", "end": true,
+     "set": {"elder_later": 0}, "text": "No matter. I am not going anywhere."},
+    {"if": {"flag": "greedy"}, "speaker": "elder", "end": true,
+     "text": "Hmph. Bring them and you will see."},
+    {"speaker": "elder", "text": "Bless you. They grow in the meadows."}
+  ]
+}
+```
+
+| Line field | Meaning |
+|------------|---------|
+| `text` | what is said (required). Wrapped to the window; `\n` forces a break. |
+| `speaker` | an **archetype** name: its sprite is the face, its `name` the name plate. Omitted → narration, no badge. |
+| `if` | a filter — the same condition syntax as events. A line whose filter fails is **skipped**. |
+| `choices` | `[{"text", "set"}]`: shown under the text once it is typed out; picking one sets variables. |
+| `set` | variables set when the line comes up (`{"name": number-or-bool}`) |
+| `give` / `take` | items handed to / taken from the player when the line comes up |
+| `end` | close the conversation after this line |
+
+That is all there is, and it is enough for a dialogue *tree*: a choice sets a variable, later
+lines filter on it, so the list is walked along a different path each time. Filters are
+checked as each line is reached — after everything the previous lines set, gave and took —
+and variables persist, so the second visit to an NPC naturally differs from the first. When
+the last line that passes has been read (or a line says `end`), the window closes. A dialogue
+with no passing line does not open at all.
+
+**Conditions** (shared with events) gained the inventory:
+
+| Form | Passes when |
+|------|-------------|
+| `{"flag": "x"}` / `{"flag": "x", "op": "ge", "value": 2}` | the variable compares true (unset reads 0) |
+| `{"item": "herb", "op": "ge", "value": 3}` | the item count compares true (never picked up counts 0) |
+| `{"has": "key"}` / `{"lacks": "key"}` | at least one / none |
+| `{"all": [...]}` / `{"any": [...]}` | every / any child passes |
+
+**Who talks.** An entity (or its archetype) with `"talk": "<dialogue id>"` can be talked to:
+standing within reach shows a hint ("SPACE: Talk to Elder Pim"), and `interact` opens its
+dialogue. The nearest one wins; ties go to the lower id. Its `"name"` is what the hint and
+the name plate show. While it talks, an NPC plays its `chat` clip.
+
+**Events** can join in: the `talk` action opens a dialogue (an intro at `start`, a remark
+when something is found), `toast` flashes a short message, `give` changes the inventory, and
+the new **`always`** trigger fires as soon as its condition holds — which is how the village
+gate opens the moment the guard sets `gate_open`.
+
+Timing is ticks (the typewriter reveals 40 glyphs a second), so a conversation replays
+exactly from the same key presses.
+
+### Objects — `"pickup"` and the inventory
+
+```json
+"items": {"herb": "Moonherb", "coin": "Coin"},
+"archetypes": { "herb": {"pickup": "herb", "label": "OBJECT", ...},
+                "purse": {"pickup": {"item": "coin", "count": 3}, ...} }
+```
+
+An entity with a `pickup` is collected by walking into it: it leaves the world (label and
+all) and its item count goes up. The inventory is just `item id → count` in the `SimState`;
+the HUD lists it in the top-left corner and a toast announces each gain. `items` gives ids a
+display name. Dialogue lines and events read it through conditions and change it with
+`give` / `take`.
+
+### The screen overlay — `"ui"`
+
+```json
+"sheets": [ ..., {"path": "art/font.png", "cols": 16, "rows": 6},
+                 {"path": "art/ui.png",   "cols": 8,  "rows": 2} ],
+"ui": {"sheet": 3, "font": 2}
+```
+
+Names the sheets the dialogue window, HUD and their text are drawn from (required for
+`dialogues`). Everything on screen is built by `dialogue.cpp` as overlay instances —
+see ARCHITECTURE.md, "The screen overlay". The sim remembers the ids it put up, by group
+(`dialogue.box`, `hud.inventory`, ...), and replaces a group only when what it shows changes.
+
+Overlay text is proportional: `scripts/gen_font.py` records each glyph's width in
+`src/game/font_metrics.h`, and `makeTextBlock` spaces and word-wraps with it.
 
 ### Outdoors
 

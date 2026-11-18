@@ -17,6 +17,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -34,6 +35,29 @@ struct SimClock {
     double time() const { return static_cast<double>(tick) * SIM_DT; }
 };
 
+// A conversation in progress (see dialogue.h). Inactive between conversations.
+struct DialogueRun {
+    bool        active = false;
+    std::string id;                 // which dialogue
+    int         line = -1;          // index of the line on screen
+    uint64_t    lineTick = 0;       // tick that line came up (drives the typewriter)
+    int         shown = 0;          // glyphs revealed so far
+    bool        revealed = false;   // the whole line is out
+    bool        footBuilt = false;  // choices / "more" marker are on screen
+    int         choice = 0;         // highlighted choice
+    EntityId    partner = 0;        // who we are talking to (0 = nobody: narration)
+    Vec4        partnerAnim = {0, 1, 0, 0};  // their animation, to restore afterwards
+};
+
+// What the screen overlay currently shows. Overlay instances live in the
+// renderer only; the sim just remembers their ids, by group, to replace them.
+struct UiRun {
+    std::map<std::string, std::vector<EntityId>> groups;
+    EntityId hintTarget = 0;        // entity the "talk to" hint is about (0 = none)
+    bool     inventoryDirty = false;
+    uint64_t toastUntil = 0;        // tick the current toast disappears
+};
+
 // ALL runtime simulation state, grouped into one cheaply-copyable value.
 // The Scene stays immutable after load; everything that mutates while the
 // game runs lives here. Copying a SimState and stepping the copy forward
@@ -47,6 +71,12 @@ struct SimState {
     std::vector<uint8_t> fired;   // per-event fired markers, indexed by event position
     SimClock clock;               // the sim's own tick clock
     bool started = false;         // start triggers fire on the first step only
+    // What the player carries: item id → count. Ordered, so the HUD lists it
+    // the same way every time.
+    std::map<std::string, int> inventory;
+    DialogueRun talk;
+    UiRun ui;
+
     // The follow camera's facing and view. Sim state, not render state: its
     // facing decides which way "forward" is for camera-relative movement.
     RigState rig;
